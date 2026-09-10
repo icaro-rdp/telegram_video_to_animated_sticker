@@ -214,13 +214,25 @@ positional arguments:
 
 ## 🤖 Uploading to Telegram
 
+Upload animated stickers to Telegram through the official [@Stickers](https://t.me/Stickers) bot by sending the file as an uncompressed document. The specific command depends on whether your animation is a vector file (`.TGS`) or a video file (`.WEBM`).
+
+> [!NOTE]
+> **Format Distinction & Troubleshooting**:
+> - **Vector animated stickers**: Use `.TGS` with command `/newanimated`.
+> - **Video animated stickers & emoji**: Use `.WEBM` with command `/newvideo` (or `/newemojivideo`).
+>
+> *Is your animated sticker in `.TGS` or `.WEBM` format, and did the bot return any specific dimension or file-size errors when sending the file?*  
+> If the bot rejects a file, run `tg-sticker check <file>.webm` to verify all parameters before uploading.
+
+### Step-by-Step Instructions:
 1. Open Telegram and start a chat with [@Stickers](https://t.me/Stickers).
 2. Type `/newvideo` (for video stickers) or `/newemojivideo` (for custom emoji).
 3. Follow the bot prompts:
-   - Provide a name for your pack.
-   - Send the generated `.webm` file as a **File / Document** (not as a compressed video).
-   - Send the corresponding emoji.
-4. Type `/publish` when you are done!
+   - Provide a title for your pack.
+   - Send the generated `.webm` file as an **uncompressed Document / File** (do **not** send as a photo/gallery video, as Telegram will compress it).
+   - Send the corresponding emoji (e.g. 😊 or 🔥).
+   - Repeat for any additional stickers.
+4. Type `/publish`, set a short URL name for your pack, and start sharing!
 
 ---
 
