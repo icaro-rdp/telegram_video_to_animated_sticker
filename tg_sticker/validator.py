@@ -19,6 +19,10 @@ from .exceptions import (
     ValidationError,
 )
 
+MAX_STICKER_BYTES = 256 * 1024
+MAX_STICKER_DURATION = 3.05
+MAX_STICKER_FPS = 30.05
+
 
 @dataclass
 class MediaInfo:
@@ -53,26 +57,50 @@ class ValidationResult:
         return f"INVALID Telegram {self.mode.capitalize()}: " + "; ".join(self.issues)
 
 
-def ensure_ffprobe_available() -> str:
-    path = shutil.which("ffprobe")
+def _resolve_tool(tool_name: str, error_cls: type[Exception]) -> str:
+    path = shutil.which(tool_name)
     if not path:
-        raise FFprobeNotFoundError(
-            "ffprobe is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
+        raise error_cls(
+            f"{tool_name} is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
         )
     return path
+
+
+def ensure_ffprobe_available() -> str:
+    return _resolve_tool("ffprobe", FFprobeNotFoundError)
 
 
 def ensure_ffmpeg_available() -> str:
-    path = shutil.which("ffmpeg")
-    if not path:
-        raise FFmpegNotFoundError(
-            "ffmpeg is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
-        )
-    return path
+    return _resolve_tool("ffmpeg", FFmpegNotFoundError)
+
+
+def _parse_fps(rate_str: Optional[str]) -> Optional[float]:
+    if not rate_str or rate_str == "0/0":
+        return None
+    if "/" in rate_str:
+        num, den = rate_str.split("/")
+        den_f = float(den)
+        return float(num) / den_f if den_f > 0 else 0.0
+    return float(rate_str)
+
+
+def _extract_stream_duration(st: Dict[str, Any], fallback: float) -> float:
+    if fallback > 0:
+        return fallback
+    if "duration" in st:
+        return float(st["duration"])
+    if "TAG:DURATION" in st:
+        parts = st["TAG:DURATION"].split(":")
+        if len(parts) == 3:
+            try:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            except (ValueError, IndexError):
+                pass
+    return 0.0
 
 
 def probe_media(file_path: str | Path) -> MediaInfo:
-    """Probes media file using ffprobe and extracts key technical attributes."""
+    """Probes media file using ffprobe and extracts technical attributes."""
     ffprobe_bin = ensure_ffprobe_available()
     file_path_str = str(Path(file_path).resolve())
 
@@ -104,15 +132,8 @@ def probe_media(file_path: str | Path) -> MediaInfo:
     size_bytes = int(format_data.get("size") or os.path.getsize(file_path_str))
     duration = float(format_data.get("duration") or 0.0)
 
-    video_stream = None
-    has_audio = False
-
-    for st in streams:
-        c_type = st.get("codec_type")
-        if c_type == "video" and video_stream is None:
-            video_stream = st
-        elif c_type == "audio":
-            has_audio = True
+    video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+    has_audio = any(s.get("codec_type") == "audio" for s in streams)
 
     video_codec = None
     width = None
@@ -126,34 +147,11 @@ def probe_media(file_path: str | Path) -> MediaInfo:
         width = int(video_stream.get("width") or 0)
         height = int(video_stream.get("height") or 0)
         pix_fmt = video_stream.get("pix_fmt")
+        duration = _extract_stream_duration(video_stream, duration)
+        fps = _parse_fps(video_stream.get("r_frame_rate"))
 
-        # Duration fallback from video stream tags
-        if duration <= 0:
-            if "duration" in video_stream:
-                duration = float(video_stream["duration"])
-            elif "TAG:DURATION" in video_stream:
-                # e.g. 00:00:02.000000000
-                tag_dur = video_stream["TAG:DURATION"]
-                try:
-                    parts = tag_dur.split(":")
-                    if len(parts) == 3:
-                        duration = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-                except (ValueError, IndexError):
-                    pass
-
-        # Calculate FPS
-        r_rate = video_stream.get("r_frame_rate", "0/1")
-        if "/" in r_rate:
-            num, den = r_rate.split("/")
-            if float(den) > 0:
-                fps = float(num) / float(den)
-        else:
-            fps = float(r_rate or 0.0)
-
-        # Alpha detection
         tags = video_stream.get("tags", {})
-        if tags.get("alpha_mode") == "1" or (pix_fmt and "a" in pix_fmt):
-            has_alpha = True
+        has_alpha = tags.get("alpha_mode") == "1" or bool(pix_fmt and "a" in pix_fmt)
 
     return MediaInfo(
         file_path=file_path_str,
@@ -172,17 +170,7 @@ def probe_media(file_path: str | Path) -> MediaInfo:
 
 
 def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> ValidationResult:
-    """
-    Validates a file against Telegram Video Sticker / Emoji guidelines:
-    - Format: .WEBM
-    - Codec: VP9
-    - Audio: No audio stream
-    - Duration: <= 3.0s (allow minor muxing float variance up to 3.05s)
-    - FPS: <= 30.05 FPS
-    - Size: <= 256 KB (262,144 bytes)
-    - Sticker dimensions: One side exactly 512, other side <= 512
-    - Emoji dimensions: Exactly 100x100
-    """
+    """Validates a file against Telegram Video Sticker / Emoji technical guidelines."""
     mode = mode.lower()
     if mode not in ("sticker", "emoji"):
         raise ValidationError(f"Invalid mode '{mode}': must be 'sticker' or 'emoji'")
@@ -190,40 +178,29 @@ def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> Vali
     info = probe_media(file_path)
     issues: List[str] = []
 
-    # 1. Format check
     if not any(f in info.format_name for f in ("webm", "matroska")):
         issues.append(f"Format is not WebM (got: {info.format_name})")
 
-    # 2. Codec check
     if info.video_codec != "vp9":
         issues.append(f"Video codec must be VP9 (got: {info.video_codec})")
 
-    # 3. Audio check
     if info.has_audio:
         issues.append("Video must not contain an audio stream")
 
-    # 4. Duration check (Telegram limit: max 3.0s)
-    if info.duration > 3.05:
+    if info.duration > MAX_STICKER_DURATION:
         issues.append(f"Duration must not exceed 3.0s (got: {info.duration:.2f}s)")
 
-    # 5. FPS check (Telegram limit: up to 30 FPS)
-    if info.fps and info.fps > 30.05:
+    if info.fps and info.fps > MAX_STICKER_FPS:
         issues.append(f"FPS must not exceed 30 (got: {info.fps:.2f})")
 
-    # 6. File size check (Telegram limit: max 256 KB = 262,144 bytes)
-    MAX_BYTES = 256 * 1024
-    if info.size_bytes > MAX_BYTES:
-        excess = info.size_bytes - MAX_BYTES
-        issues.append(
-            f"File size exceeds 256 KB limit: {info.size_kb:.2f} KB ({excess} bytes over limit)"
-        )
+    if info.size_bytes > MAX_STICKER_BYTES:
+        excess = info.size_bytes - MAX_STICKER_BYTES
+        issues.append(f"File size exceeds 256 KB limit: {info.size_kb:.2f} KB ({excess} bytes over limit)")
 
-    # 7. Dimension checks
-    if info.width is None or info.height is None or info.width <= 0 or info.height <= 0:
+    if not info.width or not info.height:
         issues.append("Unable to determine video dimensions")
     elif mode == "sticker":
-        max_dim = max(info.width, info.height)
-        min_dim = min(info.width, info.height)
+        max_dim, min_dim = max(info.width, info.height), min(info.width, info.height)
         if max_dim != 512:
             issues.append(f"For stickers, one side must be exactly 512px (got: {info.width}x{info.height})")
         if min_dim > 512:
@@ -232,9 +209,4 @@ def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> Vali
         if info.width != 100 or info.height != 100:
             issues.append(f"For emoji, dimensions must be exactly 100x100px (got: {info.width}x{info.height})")
 
-    return ValidationResult(
-        valid=(len(issues) == 0),
-        mode=mode,
-        issues=issues,
-        info=info,
-    )
+    return ValidationResult(valid=(len(issues) == 0), mode=mode, issues=issues, info=info)

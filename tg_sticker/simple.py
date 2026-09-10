@@ -5,22 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .batch import find_video_files, SUPPORTED_EXTENSIONS
+from .batch import convert_batch_file, find_video_files, SUPPORTED_EXTENSIONS
 from .converter import ConversionConfig, TelegramConverter
-from .exceptions import TelegramStickerError
 
 
-def run(
-    input_dir: str = "input_videos",
-    output_dir: str = "output_stickers",
-) -> int:
-    in_p = Path(input_dir).resolve()
-    out_p = Path(output_dir).resolve()
-
+def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") -> int:
+    in_p, out_p = Path(input_dir).resolve(), Path(output_dir).resolve()
     in_p.mkdir(parents=True, exist_ok=True)
     out_p.mkdir(parents=True, exist_ok=True)
 
-    # If specific files were passed as command-line arguments, process them
     cli_args = sys.argv[1:]
     files_to_process = []
 
@@ -51,25 +44,22 @@ def run(
     print("=" * 60)
 
     converter = TelegramConverter()
-    config = ConversionConfig(mode="sticker")  # 512px, max 3.0s, <= 256KB, VP9, no audio
-
+    config = ConversionConfig(mode="sticker")
     success_count = 0
+
     for idx, video_path in enumerate(files_to_process, 1):
         dest_file = out_p / f"{video_path.stem}.webm"
         print(f"[{idx}/{len(files_to_process)}] Processing: {video_path.name} ...", end=" ", flush=True)
 
-        try:
-            res = converter.convert(video_path, dest_file, config=config)
-            if res.valid:
-                success_count += 1
-                info = res.info
-                print(f"DONE! ({info.size_kb:.1f} KB, {info.width}x{info.height})")
-            else:
-                print(f"WARNING: {'; '.join(res.issues)}")
-        except TelegramStickerError as ex:
-            print(f"FAILED: [{ex.__class__.__name__}] {ex}")
-        except Exception as ex:
-            print(f"FAILED (Unexpected): {ex}")
+        res = convert_batch_file(converter, video_path, dest_file, config=config, overwrite=True)
+        if res.validation and res.validation.valid:
+            success_count += 1
+            info = res.validation.info
+            print(f"DONE! ({info.size_kb:.1f} KB, {info.width}x{info.height})")
+        elif res.validation:
+            print(f"WARNING: {'; '.join(res.validation.issues)}")
+        else:
+            print(f"FAILED: {res.error}")
 
     print("=" * 60)
     print(f"Finished! {success_count}/{len(files_to_process)} sticker(s) created in: {out_p}")
