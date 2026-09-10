@@ -8,3 +8,9 @@ build/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+
+# Media directories (keep empty folders via .gitkeep)
+input_videos/*
+!input_videos/.gitkeep
+output_stickers/*
+!output_stickers/.gitkeep
