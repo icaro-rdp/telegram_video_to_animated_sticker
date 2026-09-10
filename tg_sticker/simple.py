@@ -35,7 +35,7 @@ def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") ->
         print("\nHow to use:")
         print(f"1. Drop any video or GIF into the '{in_p.name}' folder.")
         print(f"   Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS)[:8])}, etc.")
-        print("2. Run 'convert_video' again.")
+        print("2. Run 'convert' again.")
         print("=" * 60 + "\n")
         return 0
 
@@ -49,9 +49,15 @@ def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") ->
 
     for idx, video_path in enumerate(files_to_process, 1):
         dest_file = out_p / f"{video_path.stem}.webm"
-        print(f"[{idx}/{len(files_to_process)}] Processing: {video_path.name} ...", end=" ", flush=True)
+        print(
+            f"[{idx}/{len(files_to_process)}] Processing: {video_path.name} ...",
+            end=" ",
+            flush=True,
+        )
 
-        res = convert_batch_file(converter, video_path, dest_file, config=config, overwrite=True)
+        res = convert_batch_file(
+            converter, video_path, dest_file, config=config, overwrite=True
+        )
         if res.validation and res.validation.valid:
             success_count += 1
             info = res.validation.info
@@ -62,7 +68,9 @@ def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") ->
             print(f"FAILED: {res.error}")
 
     print("=" * 60)
-    print(f"Finished! {success_count}/{len(files_to_process)} sticker(s) created in: {out_p}")
+    print(
+        f"Finished! {success_count}/{len(files_to_process)} sticker(s) created in: {out_p}"
+    )
     print("Ready to upload directly to @Stickers on Telegram!\n")
     return 0
 

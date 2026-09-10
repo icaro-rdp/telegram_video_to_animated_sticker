@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 tg-sticker = "tg_sticker.cli:main"
+convert = "tg_sticker.simple:main"
 convert_video = "tg_sticker.simple:main"
 
 [tool.hatch.build.targets.wheel]
