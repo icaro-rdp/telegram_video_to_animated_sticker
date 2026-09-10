@@ -60,9 +60,22 @@ source .venv/bin/activate
 
 ---
 
+## ⚡ Super Simple: `convert_video` (Zero-Config)
+
+Just drop your videos or GIFs into `input_videos/` and run:
+
+```bash
+convert_video
+```
+*(Or `python3 convert_video.py`)*
+
+That's it! It automatically processes every video in `input_videos/` with all the optimal Telegram sticker defaults (512px, <= 3.0s, <= 256 KB, VP9, no audio) and places the final `.webm` stickers in `output_stickers/`.
+
+---
+
 ## 📖 Usage Guide
 
-### 1. Batch Folder Processing (Easiest Way) 📂
+### 1. Batch Folder Processing 📂
 
 The project comes with two dedicated directories:
 - `input_videos/` - Place any number of input videos/GIFs here.
@@ -71,6 +84,7 @@ The project comes with two dedicated directories:
 ```bash
 # Convert all files from input_videos/ into output_stickers/:
 tg-sticker batch
+```
 
 # Or run with custom folders:
 tg-sticker batch -i /path/to/my_videos -o /path/to/my_stickers
