@@ -10,6 +10,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .exceptions import (
+    CorruptMediaError,
+    FFmpegNotFoundError,
+    FFprobeNotFoundError,
+    MediaNotFoundError,
+    ProbeError,
+    ValidationError,
+)
+
 
 @dataclass
 class MediaInfo:
@@ -47,7 +56,7 @@ class ValidationResult:
 def ensure_ffprobe_available() -> str:
     path = shutil.which("ffprobe")
     if not path:
-        raise RuntimeError(
+        raise FFprobeNotFoundError(
             "ffprobe is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
         )
     return path
@@ -56,7 +65,7 @@ def ensure_ffprobe_available() -> str:
 def ensure_ffmpeg_available() -> str:
     path = shutil.which("ffmpeg")
     if not path:
-        raise RuntimeError(
+        raise FFmpegNotFoundError(
             "ffmpeg is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
         )
     return path
@@ -68,7 +77,7 @@ def probe_media(file_path: str | Path) -> MediaInfo:
     file_path_str = str(Path(file_path).resolve())
 
     if not os.path.isfile(file_path_str):
-        raise FileNotFoundError(f"File not found: {file_path_str}")
+        raise MediaNotFoundError(f"Media file not found: {file_path_str}")
 
     cmd = [
         ffprobe_bin,
@@ -79,8 +88,15 @@ def probe_media(file_path: str | Path) -> MediaInfo:
         file_path_str,
     ]
 
-    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    probe_data = json.loads(res.stdout)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise ProbeError(f"ffprobe failed to inspect {file_path_str}: {e.stderr.strip()}", stderr=e.stderr)
+
+    try:
+        probe_data = json.loads(res.stdout)
+    except json.JSONDecodeError as e:
+        raise CorruptMediaError(f"Could not parse probe metadata for {file_path_str}: {e}")
 
     format_data = probe_data.get("format", {})
     streams = probe_data.get("streams", [])
@@ -122,7 +138,7 @@ def probe_media(file_path: str | Path) -> MediaInfo:
                     parts = tag_dur.split(":")
                     if len(parts) == 3:
                         duration = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-                except Exception:
+                except (ValueError, IndexError):
                     pass
 
         # Calculate FPS
@@ -169,7 +185,7 @@ def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> Vali
     """
     mode = mode.lower()
     if mode not in ("sticker", "emoji"):
-        raise ValueError("mode must be 'sticker' or 'emoji'")
+        raise ValidationError(f"Invalid mode '{mode}': must be 'sticker' or 'emoji'")
 
     info = probe_media(file_path)
     issues: List[str] = []

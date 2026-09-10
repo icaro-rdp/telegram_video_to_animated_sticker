@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from .converter import ConversionConfig, TelegramConverter
+from .exceptions import DirectoryNotFoundError, TelegramStickerError
 from .validator import ValidationResult
 
 SUPPORTED_EXTENSIONS = {
@@ -51,7 +52,7 @@ def find_video_files(input_dir: str | Path, recursive: bool = False) -> List[Pat
     """Finds all supported video/animation files in a directory."""
     in_path = Path(input_dir).resolve()
     if not in_path.is_dir():
-        raise NotADirectoryError(f"Directory not found: {in_path}")
+        raise DirectoryNotFoundError(f"Directory not found: {in_path}")
 
     files: List[Path] = []
     iterator = in_path.rglob("*") if recursive else in_path.iterdir()
@@ -127,6 +128,16 @@ def process_batch(
                     validation=res,
                 )
             )
+        except TelegramStickerError as e:
+            summary.failed += 1
+            summary.results.append(
+                BatchFileResult(
+                    input_file=video_path,
+                    output_file=dest_file,
+                    skipped=False,
+                    error=f"[{e.__class__.__name__}] {e}",
+                )
+            )
         except Exception as e:
             summary.failed += 1
             summary.results.append(
@@ -134,7 +145,7 @@ def process_batch(
                     input_file=video_path,
                     output_file=dest_file,
                     skipped=False,
-                    error=str(e),
+                    error=f"Unexpected error: {e}",
                 )
             )
 
@@ -182,12 +193,21 @@ def watch_folder(
                             )
                             if on_convert:
                                 on_convert(res)
+                        except TelegramStickerError as ex:
+                            res = BatchFileResult(
+                                input_file=item,
+                                output_file=dest_file,
+                                skipped=False,
+                                error=f"[{ex.__class__.__name__}] {ex}",
+                            )
+                            if on_convert:
+                                on_convert(res)
                         except Exception as ex:
                             res = BatchFileResult(
                                 input_file=item,
                                 output_file=dest_file,
                                 skipped=False,
-                                error=str(ex),
+                                error=f"Unexpected error: {ex}",
                             )
                             if on_convert:
                                 on_convert(res)

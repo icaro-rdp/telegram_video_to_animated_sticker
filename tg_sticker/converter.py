@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .exceptions import (
+    EncodingError,
+    MediaNotFoundError,
+    ValidationError,
+)
 from .optimizer import (
     MAX_TELEGRAM_STICKER_BYTES,
     SAFE_TARGET_BYTES,
@@ -58,7 +63,7 @@ class TelegramConverter:
         out_p = Path(output_path).resolve()
 
         if not in_p.exists():
-            raise FileNotFoundError(f"Input file not found: {in_p}")
+            raise MediaNotFoundError(f"Input file not found: {in_p}")
 
         # Probe source media
         info = probe_media(in_p)
@@ -270,7 +275,12 @@ class TelegramConverter:
             ]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
-                raise RuntimeError(f"FFmpeg encoding failed: {res.stderr}")
+                raise EncodingError(
+                    f"FFmpeg encoding failed for {in_p.name}",
+                    cmd=cmd,
+                    returncode=res.returncode,
+                    stderr=res.stderr,
+                )
         else:
             # Two-pass constrained bitrate
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -300,7 +310,12 @@ class TelegramConverter:
                 ]
                 res1 = subprocess.run(cmd_pass1, capture_output=True, text=True)
                 if res1.returncode != 0:
-                    raise RuntimeError(f"FFmpeg 2-pass (pass 1) failed: {res1.stderr}")
+                    raise EncodingError(
+                        f"FFmpeg 2-pass (pass 1) failed for {in_p.name}",
+                        cmd=cmd_pass1,
+                        returncode=res1.returncode,
+                        stderr=res1.stderr,
+                    )
 
                 # Pass 2
                 cmd_pass2 = [
@@ -325,4 +340,9 @@ class TelegramConverter:
                 ]
                 res2 = subprocess.run(cmd_pass2, capture_output=True, text=True)
                 if res2.returncode != 0:
-                    raise RuntimeError(f"FFmpeg 2-pass (pass 2) failed: {res2.stderr}")
+                    raise EncodingError(
+                        f"FFmpeg 2-pass (pass 2) failed for {in_p.name}",
+                        cmd=cmd_pass2,
+                        returncode=res2.returncode,
+                        stderr=res2.stderr,
+                    )

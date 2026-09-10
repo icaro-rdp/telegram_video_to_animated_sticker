@@ -8,6 +8,12 @@ from pathlib import Path
 
 from .batch import process_batch, watch_folder
 from .converter import ConversionConfig, TelegramConverter
+from .exceptions import (
+    DependencyError,
+    EncodingError,
+    MediaNotFoundError,
+    TelegramStickerError,
+)
 from .validator import validate_telegram_webm
 
 
@@ -49,8 +55,20 @@ def cmd_convert(args: argparse.Namespace) -> int:
     converter = TelegramConverter()
     try:
         res = converter.convert(input_file, output_file, config=config)
+    except DependencyError as e:
+        print(f"\n[DEPENDENCY ERROR] {e}", file=sys.stderr)
+        return 1
+    except MediaNotFoundError as e:
+        print(f"\n[FILE NOT FOUND] {e}", file=sys.stderr)
+        return 1
+    except EncodingError as e:
+        print(f"\n[ENCODING ERROR] {e}", file=sys.stderr)
+        return 1
+    except TelegramStickerError as e:
+        print(f"\n[ERROR] {e.__class__.__name__}: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
-        print(f"\n[FAILED] Conversion error: {e}", file=sys.stderr)
+        print(f"\n[UNEXPECTED ERROR] {e}", file=sys.stderr)
         return 1
 
     print(f"\nOutput saved: {output_file}")

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .batch import find_video_files, SUPPORTED_EXTENSIONS
 from .converter import ConversionConfig, TelegramConverter
+from .exceptions import TelegramStickerError
 
 
 def run(
@@ -65,8 +66,10 @@ def run(
                 print(f"DONE! ({info.size_kb:.1f} KB, {info.width}x{info.height})")
             else:
                 print(f"WARNING: {'; '.join(res.issues)}")
+        except TelegramStickerError as ex:
+            print(f"FAILED: [{ex.__class__.__name__}] {ex}")
         except Exception as ex:
-            print(f"FAILED: {ex}")
+            print(f"FAILED (Unexpected): {ex}")
 
     print("=" * 60)
     print(f"Finished! {success_count}/{len(files_to_process)} sticker(s) created in: {out_p}")

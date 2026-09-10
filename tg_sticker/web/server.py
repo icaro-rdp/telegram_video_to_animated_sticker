@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..batch import process_batch, find_video_files
 from ..converter import ConversionConfig, TelegramConverter
+from ..exceptions import TelegramStickerError
 from ..validator import validate_telegram_webm
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -150,8 +151,10 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "has_alpha": info.has_alpha,
                 } if info else None,
             })
+        except TelegramStickerError as e:
+            self._send_json({"error": str(e), "error_type": e.__class__.__name__}, status=400)
         except Exception as e:
-            self._send_json({"error": str(e)}, status=500)
+            self._send_json({"error": f"Internal server error: {e}", "error_type": "InternalServerError"}, status=500)
 
     def _handle_batch(self):
         try:
@@ -184,8 +187,10 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "skipped": summary.skipped,
                 "failed": summary.failed,
             })
+        except TelegramStickerError as e:
+            self._send_json({"error": str(e), "error_type": e.__class__.__name__}, status=400)
         except Exception as e:
-            self._send_json({"error": str(e)}, status=500)
+            self._send_json({"error": f"Internal server error: {e}", "error_type": "InternalServerError"}, status=500)
 
     def _send_json(self, data: dict, status: int = 200):
         body = json.dumps(data).encode("utf-8")
