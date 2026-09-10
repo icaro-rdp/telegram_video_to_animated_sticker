@@ -61,7 +61,8 @@ def _resolve_tool(tool_name: str, error_cls: type[Exception]) -> str:
     path = shutil.which(tool_name)
     if not path:
         raise error_cls(
-            f"{tool_name} is not found in PATH. Please install FFmpeg (e.g. brew install ffmpeg / apt install ffmpeg)."
+            f"{tool_name} is not found in PATH. Please install FFmpeg "
+            f"(e.g. winget install Gyan.FFmpeg / brew install ffmpeg / apt install ffmpeg)."
         )
     return path
 
@@ -117,7 +118,14 @@ def probe_media(file_path: str | Path) -> MediaInfo:
     ]
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         raise ProbeError(f"ffprobe failed to inspect {file_path_str}: {e.stderr.strip()}", stderr=e.stderr)
 

@@ -10,9 +10,11 @@ All generated files adhere strictly to Telegram's [Encoding .WEBM with VP9 Guide
 
 - **Python 3.9+**
 - **FFmpeg** (with `libvpx-vp9` enabled):
-  - macOS: `brew install ffmpeg`
-  - Ubuntu/Debian: `sudo apt update && sudo apt install -y ffmpeg`
-  - Arch: `sudo pacman -S ffmpeg`
+  - **Windows**: `winget install Gyan.FFmpeg` (or `choco install ffmpeg` / `scoop install ffmpeg`)
+  - **macOS**: `brew install ffmpeg`
+  - **Linux (Ubuntu/Debian)**: `sudo apt update && sudo apt install -y ffmpeg`
+  - **Linux (Fedora/RHEL)**: `sudo dnf install ffmpeg`
+  - **Linux (Arch)**: `sudo pacman -S ffmpeg`
 
 ---
 
@@ -24,7 +26,15 @@ Using [`uv`](https://github.com/astral-sh/uv):
 
 ```bash
 uv sync
+
+# Linux / macOS:
 source .venv/bin/activate
+
+# Windows (Command Prompt):
+.venv\Scripts\activate
+
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
 ```
 
 Or using standard `pip`:
@@ -41,6 +51,8 @@ Place your video or GIF files into `input_videos/` and run:
 convert
 # or
 convert_video
+# or
+python convert_video.py
 ```
 
 Your stickers will be generated in `output_stickers/`.

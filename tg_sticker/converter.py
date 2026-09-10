@@ -173,7 +173,13 @@ class TelegramConverter:
         return f"{base_chain},trim=0:{timing.clip_duration:.4f},setpts=PTS-STARTPTS"
 
     def _execute(self, cmd: List[str], file_name: str, stage_name: str) -> None:
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         if res.returncode != 0:
             raise EncodingError(
                 f"{stage_name} failed for {file_name}",

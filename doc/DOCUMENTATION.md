@@ -8,6 +8,7 @@ This document provides a comprehensive technical reference for the Telegram Stic
 
 - [Telegram Specifications](#telegram-specifications)
 - [Supported Input Formats](#supported-input-formats)
+- [Cross-Platform Setup (Windows, Linux, macOS)](#cross-platform-setup-windows-linux-macos)
 - [CLI Reference](#cli-reference)
   - [convert_video (One-Click)](#convert_video-one-click)
   - [tg-sticker convert](#tg-sticker-convert)
@@ -54,21 +55,70 @@ The tool handles any multimedia format supported by FFmpeg, including:
 
 ---
 
+## Cross-Platform Setup (Windows, Linux, macOS)
+
+The codebase is engineered to run seamlessly across Windows, Linux, and macOS without code changes.
+
+### FFmpeg Installation
+
+- **Windows**:
+  - Using Windows Package Manager: `winget install Gyan.FFmpeg`
+  - Using Chocolatey: `choco install ffmpeg`
+  - Using Scoop: `scoop install ffmpeg`
+  - Or download official builds from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add the `bin` folder to your system `PATH`.
+- **macOS**:
+  - Using Homebrew: `brew install ffmpeg`
+- **Linux**:
+  - Ubuntu / Debian: `sudo apt update && sudo apt install -y ffmpeg`
+  - Fedora / RHEL: `sudo dnf install ffmpeg`
+  - Arch Linux: `sudo pacman -S ffmpeg`
+
+### Virtual Environment Activation
+
+When using `uv`:
+
+```bash
+uv sync
+
+# Linux / macOS:
+source .venv/bin/activate
+
+# Windows (Command Prompt):
+.venv\Scripts\activate
+
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+```
+
+When using `pip`:
+
+```bash
+pip install -e .
+```
+
+---
+
 ## CLI Reference
 
 ### convert_video (One-Click)
 
 The simplest way to convert videos. Processes all files in `input_videos/` and writes `.webm` files to `output_stickers/`.
 
+Available commands (cross-platform):
+
 ```bash
+convert
+# or
 convert_video
+# or
+python convert_video.py
 ```
 
 Or pass specific files or directories directly:
 
 ```bash
-convert_video path/to/video.mp4
-convert_video path/to/my_folder
+convert path/to/video.mp4
+convert path/to/my_folder
 ```
 
 ### tg-sticker convert

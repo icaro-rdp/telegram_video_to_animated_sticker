@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import cgi
+import errno
 import http.server
 import json
 import os
@@ -214,7 +215,13 @@ def start_server(host: str = "127.0.0.1", port: int = 8080):
             print("Press Ctrl+C to stop the server.")
             httpd.serve_forever()
     except OSError as e:
-        if "Address already in use" in str(e):
+        is_port_in_use = (
+            getattr(e, "errno", None) in (errno.EADDRINUSE, 10048)
+            or getattr(e, "winerror", None) == 10048
+            or "already in use" in str(e).lower()
+            or "normally permitted" in str(e).lower()
+        )
+        if is_port_in_use:
             fallback_port = port + 1
             print(f"Port {port} busy, attempting port {fallback_port}...")
             start_server(host=host, port=fallback_port)

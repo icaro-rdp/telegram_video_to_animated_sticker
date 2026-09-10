@@ -42,9 +42,9 @@ def test_exception_inheritance_hierarchy():
     assert issubclass(SizeConstraintExceededError, ValidationError)
 
 
-def test_media_not_found_error():
+def test_media_not_found_error(tmp_path):
     """probe_media and converter.convert should raise MediaNotFoundError for missing files."""
-    missing_path = Path("/nonexistent/video_12345.mp4")
+    missing_path = tmp_path / "nonexistent_video_12345.mp4"
 
     with pytest.raises(MediaNotFoundError) as exc_info:
         probe_media(missing_path)
@@ -53,13 +53,14 @@ def test_media_not_found_error():
 
     converter = TelegramConverter()
     with pytest.raises(MediaNotFoundError):
-        converter.convert(missing_path, "/tmp/out.webm")
+        converter.convert(missing_path, tmp_path / "out.webm")
 
 
-def test_directory_not_found_error():
+def test_directory_not_found_error(tmp_path):
     """find_video_files should raise DirectoryNotFoundError for missing directory."""
+    missing_dir = tmp_path / "nonexistent_directory_999"
     with pytest.raises(DirectoryNotFoundError) as exc_info:
-        find_video_files("/nonexistent/directory_999")
+        find_video_files(missing_dir)
     assert isinstance(exc_info.value, NotADirectoryError)
 
 
