@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "telegram-sticker-converter"
+version = "0.1.0"
+description = "A fast and reliable tool to transform videos into Telegram animated stickers and emoji (.webm VP9)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Developer" }
+]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+tg-sticker = "tg_sticker.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tg_sticker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
