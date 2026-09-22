@@ -233,28 +233,43 @@ RESULT: PASS - Ready to upload to Telegram @Stickers bot!
 
 ---
 
-### tg-sticker web
+### tg-sticker server
 
-Starts a local HTTP server providing a graphical browser interface.
+Starts the Next.js Telegram Sticker Studio web application on `http://localhost:3000`.
 
 ```bash
-tg-sticker web [--host 127.0.0.1] [-p 8080]
+tg-sticker server [-p 3000]
 ```
+*(Note: `tg-sticker web` remains supported as an alias).*
+
+#### Running the Next.js Web Studio:
+```bash
+# Start from repository root
+uv run tg-sticker server
+
+# Or directly in frontend/
+cd frontend
+npm run dev
+```
+Open **`http://localhost:3000`** in your browser.
+
+> Note: If you do not have Node.js installed, you can use all conversion features directly from your terminal using the CLI commands (`tg-sticker convert`, `tg-sticker batch`).
 
 #### Web Features:
-- Drag-and-drop file upload.
-- Video preview with interactive start time and duration inputs.
+- Built with **Next.js 16 (App Router, Turbopack)**, **React 19**, **Tailwind CSS v4**, **Vercel Geist Typography**, and **shadcn/ui** design system components.
+- Drag-and-drop file upload with format inspection.
+- Video preview player with interactive start time and duration scrubbing.
 - Live sticker loop playback against a transparency checkerboard.
-- Automated compliance checklist.
+- Automated real-time Telegram VP9 compliance checklist.
 - Direct download button for generated `.webm` files.
 - Folder Batch tab for managing `input_videos/` and `output_stickers/`.
 
-#### REST API Endpoints:
-- `GET /api/status`: Health check.
+#### Next.js API Route Handlers:
+- `GET /api/status`: Health check and status.
 - `GET /api/folders`: List input and output directory contents.
-- `GET /output/<filename>`: Download converted `.webm` file.
-- `POST /api/convert`: Multipart form-data conversion endpoint.
-- `POST /api/batch`: JSON endpoint to trigger batch processing.
+- `GET /output/[filename]`: Download / stream converted `.webm` file.
+- `POST /api/convert`: Multipart form-data conversion endpoint invoking `tg-sticker convert --json`.
+- `POST /api/batch`: JSON endpoint to trigger batch processing invoking `tg-sticker batch --json`.
 
 ---
 

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,7 +17,7 @@ from tg_sticker.exceptions import (
     MediaNotFoundError,
     TelegramStickerError,
 )
-from tg_sticker.utils.logger import logger
+from tg_sticker.utils.logger import logger, set_level
 from tg_sticker.validator import validate_telegram_webm
 
 
@@ -24,9 +27,27 @@ def format_size(bytes_val: int) -> str:
 
 
 def cmd_convert(args: argparse.Namespace) -> int:
+    is_json = getattr(args, "json", False)
+    if is_json:
+        set_level("ERROR")
+
     input_file = Path(args.input).resolve()
     if not input_file.is_file():
-        logger.error("Input file not found: %s", input_file)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [f"Input file not found: {input_file}"],
+                        "error": f"Input file not found: {input_file}",
+                        "error_type": "MediaNotFoundError",
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("Input file not found: %s", input_file)
         return 1
 
     if args.output:
@@ -39,43 +60,141 @@ def cmd_convert(args: argparse.Namespace) -> int:
         start_time=args.start,
         duration=args.duration,
         speed_to_fit=args.speed_to_fit,
-        loop_mode="pingpong" if args.pingpong else "normal",
+        loop_mode="pingpong" if getattr(args, "pingpong", False) else "normal",
         fit_mode=args.fit,
         fps=args.fps,
         crf=args.crf,
         remove_bg=args.remove_bg,
     )
 
-    logger.info("Converting: %s", input_file.name)
-    logger.info(
-        "  Mode: %s | Loop: %s | FPS: %d",
-        config.mode.capitalize(),
-        config.loop_mode,
-        config.fps,
-    )
-    if config.speed_to_fit:
-        logger.info("  Speed-to-fit: enabled (accelerating video to fit <= 3s)")
-    if config.start_time:
-        logger.info("  Start offset: %ss", config.start_time)
+    if not is_json:
+        logger.info("Converting: %s", input_file.name)
+        logger.info(
+            "  Mode: %s | Loop: %s | FPS: %d",
+            config.mode.capitalize(),
+            config.loop_mode,
+            config.fps,
+        )
+        if config.speed_to_fit:
+            logger.info("  Speed-to-fit: enabled (accelerating video to fit <= 3s)")
+        if config.start_time:
+            logger.info("  Start offset: %ss", config.start_time)
 
     converter = TelegramConverter()
     try:
         res = converter.convert(input_file, output_file, config=config)
     except DependencyError as e:
-        logger.error("[DEPENDENCY ERROR] %s", e)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "error": str(e),
+                        "error_type": "DependencyError",
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("[DEPENDENCY ERROR] %s", e)
         return 1
     except MediaNotFoundError as e:
-        logger.error("[FILE NOT FOUND] %s", e)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "error": str(e),
+                        "error_type": "MediaNotFoundError",
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("[FILE NOT FOUND] %s", e)
         return 1
     except EncodingError as e:
-        logger.error("[ENCODING ERROR] %s", e)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "error": str(e),
+                        "error_type": "EncodingError",
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("[ENCODING ERROR] %s", e)
         return 1
     except TelegramStickerError as e:
-        logger.error("[ERROR] %s: %s", e.__class__.__name__, e)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "error": str(e),
+                        "error_type": e.__class__.__name__,
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("[ERROR] %s: %s", e.__class__.__name__, e)
         return 1
     except Exception as e:
-        logger.error("[UNEXPECTED ERROR] %s", e)
+        if is_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "success": False,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "error": str(e),
+                        "error_type": "UnexpectedError",
+                    }
+                )
+                + "\n"
+            )
+        else:
+            logger.error("[UNEXPECTED ERROR] %s", e)
         return 1
+
+    if is_json:
+        info_dict = (
+            {
+                "width": res.info.width,
+                "height": res.info.height,
+                "duration": res.info.duration,
+                "fps": res.info.fps,
+                "size_bytes": res.info.size_bytes,
+                "size_kb": res.info.size_kb,
+                "codec": res.info.video_codec,
+                "has_audio": res.info.has_audio,
+                "has_alpha": res.info.has_alpha,
+            }
+            if res.info
+            else None
+        )
+        payload = {
+            "success": True,
+            "valid": res.valid,
+            "issues": res.issues,
+            "output_file": str(output_file),
+            "filename": output_file.name,
+            "info": info_dict,
+        }
+        sys.stdout.write(json.dumps(payload) + "\n")
+        return 0
 
     logger.info("Output saved: %s", output_file)
     logger.info(
@@ -101,6 +220,10 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
 
 def cmd_batch(args: argparse.Namespace) -> int:
+    is_json = getattr(args, "json", False)
+    if is_json:
+        set_level("ERROR")
+
     in_dir = Path(args.input_dir)
     out_dir = Path(args.output_dir)
 
@@ -152,11 +275,13 @@ def cmd_batch(args: argparse.Namespace) -> int:
         )
         return 0
 
-    logger.info("Batch converting videos from: %s", in_dir.resolve())
-    logger.info("Saving stickers to:           %s", out_dir.resolve())
+    if not is_json:
+        logger.info("Batch converting videos from: %s", in_dir.resolve())
+        logger.info("Saving stickers to:           %s", out_dir.resolve())
 
     def progress(p: Path, cur: int, tot: int):
-        logger.info("[%d/%d] Processing %s...", cur, tot, p.name)
+        if not is_json:
+            logger.info("[%d/%d] Processing %s...", cur, tot, p.name)
 
     summary = process_batch(
         input_dir=in_dir,
@@ -166,6 +291,17 @@ def cmd_batch(args: argparse.Namespace) -> int:
         recursive=args.recursive,
         progress_callback=progress,
     )
+
+    if is_json:
+        payload = {
+            "success": summary.failed == 0,
+            "total": summary.total,
+            "succeeded": summary.succeeded,
+            "skipped": summary.skipped,
+            "failed": summary.failed,
+        }
+        sys.stdout.write(json.dumps(payload) + "\n")
+        return 0 if summary.failed == 0 else 1
 
     logger.divider(length=50)
     logger.info("Batch Conversion Summary:")
@@ -194,16 +330,27 @@ def cmd_batch(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    is_json = getattr(args, "json", False)
+    if is_json:
+        set_level("ERROR")
+
     target = Path(args.file).resolve()
     if not target.is_file():
-        logger.error("Error: File not found: %s", target)
+        if is_json:
+            sys.stdout.write(
+                json.dumps({"valid": False, "issues": [f"File not found: {target}"]})
+                + "\n"
+            )
+        else:
+            logger.error("Error: File not found: %s", target)
         return 1
 
     res = validate_telegram_webm(target, mode=args.mode)
-    logger.info(
-        "Checking Telegram Compliance for: %s (Mode: %s)", target.name, args.mode
-    )
-    logger.divider(length=55)
+    if not is_json:
+        logger.info(
+            "Checking Telegram Compliance for: %s (Mode: %s)", target.name, args.mode
+        )
+        logger.divider(length=55)
 
     info = res.info
     checks = [
@@ -252,13 +399,38 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     all_passed = True
     for name, passed, val in checks:
-        icon = "✓" if passed else "✗"
-        status = f"[{icon}] {name:<45} : {val}"
-        if passed:
-            logger.info("%s", status)
-        else:
-            logger.error("%s", status)
+        if not passed:
             all_passed = False
+        if not is_json:
+            icon = "✓" if passed else "✗"
+            status = f"[{icon}] {name:<45} : {val}"
+            if passed:
+                logger.info("%s", status)
+            else:
+                logger.error("%s", status)
+
+    if is_json:
+        checks_dict = {
+            name: {"passed": passed, "value": str(val)} for name, passed, val in checks
+        }
+        payload = {
+            "valid": all_passed,
+            "issues": res.issues,
+            "checks": checks_dict,
+            "info": {
+                "format_name": info.format_name,
+                "video_codec": info.video_codec,
+                "has_audio": info.has_audio,
+                "duration": info.duration,
+                "fps": info.fps,
+                "size_bytes": info.size_bytes,
+                "size_kb": info.size_kb,
+                "width": info.width,
+                "height": info.height,
+            },
+        }
+        sys.stdout.write(json.dumps(payload) + "\n")
+        return 0 if all_passed else 1
 
     logger.divider(length=55)
     if all_passed:
@@ -269,10 +441,48 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_web(args: argparse.Namespace) -> int:
-    from .web.server import start_server
+def cmd_server(args: argparse.Namespace) -> int:
+    """Start the Next.js Telegram Sticker Studio frontend.
 
-    start_server(host=args.host, port=args.port)
+    Args:
+        args: Command line parsed arguments.
+
+    Returns:
+        Process exit code (0 on success).
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    frontend_dir = repo_root / "frontend"
+    if not (frontend_dir / "package.json").is_file():
+        logger.error("Frontend directory not found at: %s", frontend_dir)
+        return 1
+
+    npm_bin = shutil.which("npm")
+    if not npm_bin:
+        logger.error("Node.js and npm are required to run the Next.js web studio.")
+        logger.info(
+            "To convert stickers directly from your terminal without Node.js, use the CLI:"
+        )
+        logger.info("  tg-sticker convert <input_video>")
+        return 1
+
+    port = getattr(args, "port", 3000)
+    logger.divider(length=55)
+    logger.info("  Telegram Sticker Studio (Next.js)")
+    logger.info("  Starting on: http://localhost:%d", port)
+    logger.divider(length=55)
+    logger.info("Press Ctrl+C to stop the studio.")
+
+    try:
+        subprocess.run(
+            [npm_bin, "run", "dev", "--", "-p", str(port)],
+            cwd=str(frontend_dir),
+            check=True,
+        )
+    except KeyboardInterrupt:
+        logger.info("Server stopped.")
+    except subprocess.CalledProcessError as e:
+        logger.error("Next.js server exited with error code %d", e.returncode)
+        return e.returncode
     return 0
 
 
@@ -309,6 +519,11 @@ def main():
         help="Speed up longer video to fit into 3.0s",
     )
     p_conv.add_argument(
+        "--pingpong",
+        action="store_true",
+        help="Ping-pong boomerang looping",
+    )
+    p_conv.add_argument(
         "--fit",
         choices=["contain", "crop", "pad", "stretch"],
         default=None,
@@ -324,6 +539,11 @@ def main():
         "--remove-bg",
         default=None,
         help="Color to key out (e.g. green, white, black, or #hex)",
+    )
+    p_conv.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
     )
 
     # Batch subcommand
@@ -381,6 +601,11 @@ def main():
         action="store_true",
         help="Watch input directory and continuously convert newly added videos",
     )
+    p_batch.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
+    )
 
     # Check subcommand
     p_check = subparsers.add_parser(
@@ -393,14 +618,20 @@ def main():
         default="sticker",
         help="Validation mode",
     )
-
-    # Web subcommand
-    p_web = subparsers.add_parser("web", help="Launch local browser-based UI")
-    p_web.add_argument(
-        "--host", default="127.0.0.1", help="Host interface (default: 127.0.0.1)"
+    p_check.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
     )
-    p_web.add_argument(
-        "-p", "--port", type=int, default=8080, help="Port to listen on (default: 8080)"
+
+    # Server subcommand (with 'web' alias)
+    p_server = subparsers.add_parser(
+        "server",
+        aliases=["web"],
+        help="Start the Next.js Telegram Sticker Studio frontend (http://localhost:3000)",
+    )
+    p_server.add_argument(
+        "-p", "--port", type=int, default=3000, help="Port to listen on (default: 3000)"
     )
 
     args = parser.parse_args()
@@ -415,8 +646,8 @@ def main():
         return cmd_batch(args)
     elif args.command == "check":
         return cmd_check(args)
-    elif args.command == "web":
-        return cmd_web(args)
+    elif args.command in ("server", "web"):
+        return cmd_server(args)
 
     return 0
 

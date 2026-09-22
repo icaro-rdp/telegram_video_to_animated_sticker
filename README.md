@@ -99,11 +99,21 @@ tg-sticker check output_stickers/sticker.webm
 
 ### Browser Studio (Web UI)
 
+The web studio is an interactive, modern fullstack application built with **Next.js (App Router, Turbopack, TypeScript)**, **Tailwind CSS**, and **[shadcn/ui](https://ui.shadcn.com/)** in [`frontend/`](frontend/), interfacing directly with the `tg-sticker` engine:
+
 ```bash
-# Start local web interface
-tg-sticker web
+# Start the Next.js studio (from repo root)
+uv run tg-sticker server
+
+# Or directly in frontend/
+cd frontend
+npm run dev
 ```
-Open `http://127.0.0.1:8080` in your browser for drag-and-drop conversion, interactive trimming, and live sticker loop previews.
+
+Open **`http://localhost:3000`** in your browser.
+
+> Note: Users without Node.js can use all conversion features directly from the terminal via the CLI commands (`tg-sticker convert`, `tg-sticker batch`).
+
 
 ---
 

@@ -1,7 +1,7 @@
 """Telegram Video to Animated Sticker / Emoji Converter."""
 
-from .converter import ConversionConfig, TelegramConverter
-from .exceptions import (
+from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.exceptions import (
     CorruptMediaError,
     DependencyError,
     DimensionConstraintError,
@@ -20,7 +20,7 @@ from .exceptions import (
     UnsupportedFormatError,
     ValidationError,
 )
-from .validator import probe_media, validate_telegram_webm
+from tg_sticker.validator import probe_media, validate_telegram_webm
 
 __all__ = [
     "ConversionConfig",
