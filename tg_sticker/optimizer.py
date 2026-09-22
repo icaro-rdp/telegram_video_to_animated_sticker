@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Tuple
-
 
 MAX_TELEGRAM_STICKER_BYTES = 256 * 1024  # 262,144 bytes
 SAFE_TARGET_BYTES = 250 * 1024  # 256,000 bytes (safety headroom)
@@ -21,7 +18,9 @@ class EncodingParams:
     fps: int = 30
 
 
-def calculate_target_bitrate(duration_sec: float, target_bytes: int = SAFE_TARGET_BYTES) -> int:
+def calculate_target_bitrate(
+    duration_sec: float, target_bytes: int = SAFE_TARGET_BYTES
+) -> int:
     """Calculates max allowed average bitrate (in kbps) for a given duration to fit inside byte budget."""
     safe_dur = max(duration_sec, 0.5)
     total_kbits = (target_bytes * 8) / 1000.0

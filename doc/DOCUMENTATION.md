@@ -139,10 +139,11 @@ tg-sticker convert <input_file> [options]
 - `-t, --duration <seconds>`: Duration in seconds (maximum 3.0).
 - `--speed-to-fit`: Accelerates the entire video so that it fits within 3.0 seconds.
 - `--pingpong`: Applies a boomerang / forward-reverse bounce loop.
-- `--fit {crop,pad,stretch}`: Resizing strategy for emoji mode (default: `crop`).
-  - `crop`: Centers and crops to a 1:1 square.
-  - `pad`: Preserves aspect ratio with transparent borders.
-  - `stretch`: Non-uniform scaling to 100x100.
+- `--fit {contain,crop,pad,stretch}`: Resizing strategy (default: `contain` for stickers, `crop` for emoji).
+  - `contain`: Preserves aspect ratio (for stickers: longer edge 512px, shorter <= 512px).
+  - `crop`: Centers and crops to a 1:1 square (512x512 for stickers, 100x100 for emoji).
+  - `pad`: Preserves aspect ratio with transparent borders (padded to 512x512 for stickers, 100x100 for emoji).
+  - `stretch`: Non-uniform scaling to 512x512 (or 100x100).
 - `--fps <int>`: Target framerate (default: 30, maximum: 30).
 - `--crf <int>`: Base VP9 CRF quality level (0 to 63, default: 30).
 - `--remove-bg <color>`: Removes solid background color using chroma-keying (`green`, `black`, `white`, or hex value `#RRGGBB`).
@@ -300,7 +301,7 @@ Configuration parameters for conversion:
 | `duration` | `float | None` | `None` | Clip duration (<= 3.0s) |
 | `speed_to_fit` | `bool` | `False` | Accelerate video to fit in <= 3.0s |
 | `loop_mode` | `str` | `"normal"` | `"normal"` or `"pingpong"` |
-| `fit_mode` | `str` | `"crop"` | Emoji fitting: `"crop"`, `"pad"`, `"stretch"` |
+| `fit_mode` | `str | None` | `None` | Resizing strategy: `"contain"`, `"crop"`, `"pad"`, `"stretch"` (default: `"contain"` for sticker, `"crop"` for emoji) |
 | `fps` | `int` | `30` | Target framerate (max 30) |
 | `crf` | `int` | `30` | VP9 CRF quality level (0-63) |
 | `remove_bg` | `str | None` | `None` | Color to key out (`"green"`, `"black"`, etc.) |

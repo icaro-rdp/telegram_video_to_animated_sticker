@@ -1,10 +1,10 @@
 """Tests for batch directory processing."""
 
 import subprocess
-from pathlib import Path
+
 import pytest
 
-from tg_sticker.batch import process_batch, find_video_files
+from tg_sticker.batch import find_video_files, process_batch
 from tg_sticker.converter import ConversionConfig
 
 
@@ -17,8 +17,12 @@ def populated_input_dir(tmp_path):
     for name, dur in [("clip1.mp4", 1.0), ("clip2.mov", 1.5), ("anim.gif", 0.8)]:
         fpath = in_dir / name
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi", "-i", f"testsrc=duration={dur}:size=320x240:rate=25",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc=duration={dur}:size=320x240:rate=25",
             str(fpath),
         ]
         subprocess.run(cmd, check=True, capture_output=True)

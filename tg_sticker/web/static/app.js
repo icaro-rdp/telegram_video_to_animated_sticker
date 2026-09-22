@@ -83,12 +83,30 @@ function setStartFromCurrent() {
 }
 
 function toggleMode() {
-  const mode = document.querySelector('input[name="mode"]:checked').value;
-  const emojiRow = document.getElementById('emojiFitRow');
-  if (mode === 'emoji') {
-    emojiRow.style.display = 'flex';
+  // Fit options are available for both modes now
+}
+
+function updateCrfLabel(val) {
+  const num = parseInt(val, 10);
+  let desc = 'Balanced';
+  if (num <= 20) desc = 'High Quality';
+  else if (num <= 28) desc = 'Good Quality';
+  else if (num <= 35) desc = 'Balanced';
+  else if (num <= 42) desc = 'Smaller File';
+  else desc = 'High Compression';
+  document.getElementById('crfVal').textContent = `CRF ${num} (${desc})`;
+}
+
+function toggleCustomColor(val) {
+  const picker = document.getElementById('customColorPicker');
+  const hex = document.getElementById('customColorHex');
+  if (val === 'custom') {
+    picker.style.display = 'inline-block';
+    hex.style.display = 'inline-block';
+    if (!hex.value) hex.value = picker.value;
   } else {
-    emojiRow.style.display = 'none';
+    picker.style.display = 'none';
+    hex.style.display = 'none';
   }
 }
 
@@ -102,7 +120,14 @@ async function runConversion() {
   const duration = document.getElementById('duration').value;
   const speedToFit = document.getElementById('speedToFit').checked;
   const fitMode = document.getElementById('fitMode').value;
-  const removeBg = document.getElementById('removeBg').value;
+  const fps = document.getElementById('fpsRange').value;
+  const crf = document.getElementById('crfRange').value;
+  const preserveAlpha = document.getElementById('preserveAlpha').checked;
+
+  let removeBg = document.getElementById('removeBg').value;
+  if (removeBg === 'custom') {
+    removeBg = document.getElementById('customColorHex').value || document.getElementById('customColorPicker').value;
+  }
 
   const formData = new FormData();
   formData.append('video', currentFile);
@@ -112,8 +137,11 @@ async function runConversion() {
   formData.append('start_time', startTime);
   formData.append('duration', duration);
   formData.append('speed_to_fit', speedToFit);
-  formData.append('fit_mode', fitMode);
-  formData.append('remove_bg', removeBg);
+  if (fitMode) formData.append('fit_mode', fitMode);
+  formData.append('fps', fps);
+  formData.append('crf', crf);
+  if (removeBg) formData.append('remove_bg', removeBg);
+  formData.append('preserve_alpha', preserveAlpha);
 
   // UI state
   document.getElementById('emptyState').classList.add('hidden');
@@ -237,9 +265,16 @@ async function refreshFolders() {
 
 async function runBatchConversion() {
   const mode = document.getElementById('batchMode').value;
+  const fitMode = document.getElementById('batchFit').value;
+  const duration = document.getElementById('batchDuration').value;
+  const fps = document.getElementById('batchFps').value;
+  const crf = document.getElementById('batchCrf').value;
+  const removeBg = document.getElementById('batchRemoveBg').value;
   const speedToFit = document.getElementById('batchSpeed').checked;
   const pingpong = document.getElementById('batchPingpong').checked;
+  const preserveAlpha = document.getElementById('batchPreserveAlpha').checked;
   const overwrite = document.getElementById('batchOverwrite').checked;
+  const recursive = document.getElementById('batchRecursive').checked;
 
   const btn = document.getElementById('runBatchBtn');
   const progBox = document.getElementById('batchProgressBox');
@@ -249,16 +284,25 @@ async function runBatchConversion() {
   progBox.classList.remove('hidden');
   statusText.textContent = 'Processing folder videos with FFmpeg VP9...';
 
+  const payload = {
+    mode,
+    speed_to_fit: speedToFit,
+    loop_mode: pingpong ? 'pingpong' : 'normal',
+    preserve_alpha: preserveAlpha,
+    overwrite,
+    recursive,
+  };
+  if (fitMode) payload.fit_mode = fitMode;
+  if (duration) payload.duration = parseFloat(duration);
+  if (fps) payload.fps = parseInt(fps, 10);
+  if (crf) payload.crf = parseInt(crf, 10);
+  if (removeBg) payload.remove_bg = removeBg;
+
   try {
     const res = await fetch('/api/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode,
-        speed_to_fit: speedToFit,
-        loop_mode: pingpong ? 'pingpong' : 'normal',
-        overwrite,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json();

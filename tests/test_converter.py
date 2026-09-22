@@ -1,11 +1,10 @@
 """Integration tests for TelegramConverter."""
 
 import subprocess
-from pathlib import Path
+
 import pytest
 
-from tg_sticker.converter import TelegramConverter, ConversionConfig
-from tg_sticker.validator import probe_media
+from tg_sticker.converter import ConversionConfig, TelegramConverter
 
 
 @pytest.fixture(scope="session")
@@ -14,11 +13,20 @@ def sample_landscape_mp4(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "landscape.mp4"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=4.0:size=1920x1080:rate=30",
-        "-f", "lavfi", "-i", "sine=frequency=1000:duration=4.0",
-        "-c:v", "libx264",
-        "-c:a", "aac",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=4.0:size=1920x1080:rate=30",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=1000:duration=4.0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
         str(out_file),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -31,9 +39,14 @@ def sample_portrait_mp4(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "portrait.mp4"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=2.0:size=1080x1920:rate=30",
-        "-c:v", "libx264",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=2.0:size=1080x1920:rate=30",
+        "-c:v",
+        "libx264",
         "-an",
         str(out_file),
     ]
@@ -115,8 +128,12 @@ def test_remove_bg_colorkey(tmp_path):
 
     # Generate synthetic green screen video
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "color=c=green:s=512x512:d=1.0:r=30",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=green:s=512x512:d=1.0:r=30",
         str(green_video),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -136,27 +153,37 @@ def test_size_limit_enforcement(tmp_path):
 
     # Generate synthetic video with dense visual noise
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "nullsrc=s=1280x720:d=3.0:r=30,geq=random(1)*255:128:128",
-        "-c:v", "libx264",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "nullsrc=s=1280x720:d=3.0:r=30,geq=random(1)*255:128:128",
+        "-c:v",
+        "libx264",
         str(noisy_video),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
 
-    cfg = ConversionConfig(mode="sticker", duration=3.0, crf=10)  # crf=10 would normally explode file size
+    cfg = ConversionConfig(
+        mode="sticker", duration=3.0, crf=10
+    )  # crf=10 would normally explode file size
     res = converter.convert(noisy_video, out_webm, config=cfg)
 
     assert res.valid is True, res.issues
     assert res.info.size_bytes <= 256 * 1024
 
 
-@pytest.mark.parametrize("fmt,codec,extra_args", [
-    ("mkv", "libx264", []),
-    ("avi", "mpeg4", []),
-    ("webm", "libvpx", []),
-    ("gif", "gif", []),
-    ("png", "png", ["-frames:v", "1"]),
-])
+@pytest.mark.parametrize(
+    "fmt,codec,extra_args",
+    [
+        ("mkv", "libx264", []),
+        ("avi", "mpeg4", []),
+        ("webm", "libvpx", []),
+        ("gif", "gif", []),
+        ("png", "png", ["-frames:v", "1"]),
+    ],
+)
 def test_multiple_input_formats(tmp_path, fmt, codec, extra_args):
     """Test converting various video and animation container formats into Telegram WebM VP9."""
     converter = TelegramConverter()
@@ -164,9 +191,14 @@ def test_multiple_input_formats(tmp_path, fmt, codec, extra_args):
     out_webm = tmp_path / f"output_{fmt}.webm"
 
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=1.0:size=640x360:rate=25",
-        "-c:v", codec,
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=1.0:size=640x360:rate=25",
+        "-c:v",
+        codec,
         *extra_args,
         str(in_file),
     ]
@@ -178,3 +210,44 @@ def test_multiple_input_formats(tmp_path, fmt, codec, extra_args):
     assert res.info.video_codec == "vp9"
 
 
+def test_convert_sticker_fit_crop(sample_landscape_mp4, tmp_path):
+    """Test that --fit crop produces a 512x512 square sticker."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "sticker_cropped.webm"
+
+    cfg = ConversionConfig(mode="sticker", fit_mode="crop", duration=2.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 512
+    assert res.info.height == 512
+    assert res.info.size_bytes <= 256 * 1024
+
+
+def test_convert_sticker_fit_pad(sample_landscape_mp4, tmp_path):
+    """Test that --fit pad produces a 512x512 square sticker with transparency."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "sticker_padded.webm"
+
+    cfg = ConversionConfig(mode="sticker", fit_mode="pad", duration=2.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 512
+    assert res.info.height == 512
+    assert res.info.has_alpha is True
+    assert res.info.size_bytes <= 256 * 1024
+
+
+def test_convert_sticker_fit_stretch(sample_landscape_mp4, tmp_path):
+    """Test that --fit stretch produces a 512x512 square sticker."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "sticker_stretched.webm"
+
+    cfg = ConversionConfig(mode="sticker", fit_mode="stretch", duration=2.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 512
+    assert res.info.height == 512
+    assert res.info.size_bytes <= 256 * 1024

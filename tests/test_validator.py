@@ -1,7 +1,7 @@
 """Tests for media probing and Telegram specification validator."""
 
 import subprocess
-from pathlib import Path
+
 import pytest
 
 from tg_sticker.validator import probe_media, validate_telegram_webm
@@ -13,11 +13,18 @@ def valid_sticker_webm(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "valid_sticker.webm"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=2.0:size=512x288:rate=30",
-        "-c:v", "libvpx-vp9",
-        "-crf", "30",
-        "-b:v", "0",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=2.0:size=512x288:rate=30",
+        "-c:v",
+        "libvpx-vp9",
+        "-crf",
+        "30",
+        "-b:v",
+        "0",
         "-an",
         str(out_file),
     ]
@@ -31,11 +38,18 @@ def valid_emoji_webm(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "valid_emoji.webm"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=1.5:size=100x100:rate=30",
-        "-c:v", "libvpx-vp9",
-        "-crf", "30",
-        "-b:v", "0",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=1.5:size=100x100:rate=30",
+        "-c:v",
+        "libvpx-vp9",
+        "-crf",
+        "30",
+        "-b:v",
+        "0",
         "-an",
         str(out_file),
     ]
@@ -49,11 +63,18 @@ def invalid_duration_webm(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "invalid_duration.webm"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=5.0:size=512x288:rate=30",
-        "-c:v", "libvpx-vp9",
-        "-crf", "30",
-        "-b:v", "0",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=5.0:size=512x288:rate=30",
+        "-c:v",
+        "libvpx-vp9",
+        "-crf",
+        "30",
+        "-b:v",
+        "0",
         "-an",
         str(out_file),
     ]
@@ -67,11 +88,20 @@ def audio_webm(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("media")
     out_file = tmp_dir / "with_audio.webm"
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=1.0:size=512x288:rate=30",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=1.0",
-        "-c:v", "libvpx-vp9",
-        "-c:a", "libopus",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=duration=1.0:size=512x288:rate=30",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=1.0",
+        "-c:v",
+        "libvpx-vp9",
+        "-c:a",
+        "libopus",
         str(out_file),
     ]
     subprocess.run(cmd, check=True, capture_output=True)

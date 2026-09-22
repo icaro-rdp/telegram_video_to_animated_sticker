@@ -1,26 +1,25 @@
 """Unit tests for domain-specific exception hierarchy and error handling."""
 
 import pytest
-from pathlib import Path
 
+from tg_sticker.batch import find_video_files
+from tg_sticker.converter import TelegramConverter
 from tg_sticker.exceptions import (
-    TelegramStickerError,
     DependencyError,
+    DirectoryNotFoundError,
+    EncodingError,
+    FFmpegExecutionError,
     FFmpegNotFoundError,
     FFprobeNotFoundError,
     MediaError,
     MediaNotFoundError,
-    DirectoryNotFoundError,
-    ProcessingError,
-    FFmpegExecutionError,
-    EncodingError,
     ProbeError,
-    ValidationError,
+    ProcessingError,
     SizeConstraintExceededError,
+    TelegramStickerError,
+    ValidationError,
 )
-from tg_sticker.converter import TelegramConverter, ConversionConfig
 from tg_sticker.validator import probe_media, validate_telegram_webm
-from tg_sticker.batch import find_video_files
 
 
 def test_exception_inheritance_hierarchy():

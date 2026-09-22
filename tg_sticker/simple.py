@@ -2,28 +2,112 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
-from .batch import convert_batch_file, find_video_files, SUPPORTED_EXTENSIONS
+from .batch import SUPPORTED_EXTENSIONS, convert_batch_file, find_video_files
 from .converter import ConversionConfig, TelegramConverter
 
 
-def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") -> int:
-    in_p, out_p = Path(input_dir).resolve(), Path(output_dir).resolve()
+def run(
+    argv: list[str] | None = None,
+    input_dir: str = "input_videos",
+    output_dir: str = "output_stickers",
+) -> int:
+    parser = argparse.ArgumentParser(
+        prog="convert",
+        description="One-command simple runner for Telegram sticker conversion.",
+    )
+    parser.add_argument(
+        "inputs",
+        nargs="*",
+        help="Optional input video file(s) or directory. If omitted, uses 'input_videos/'.",
+    )
+    parser.add_argument(
+        "-i",
+        "--input-dir",
+        default=input_dir,
+        help=f"Input folder to search when no inputs specified (default: {input_dir})",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        default=output_dir,
+        help=f"Output folder for converted stickers (default: {output_dir})",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["sticker", "emoji"],
+        default="sticker",
+        help="Target format: sticker (512px) or emoji (100x100)",
+    )
+    parser.add_argument(
+        "--fit",
+        choices=["contain", "crop", "pad", "stretch"],
+        default=None,
+        help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
+    )
+    parser.add_argument(
+        "-ss",
+        "--start",
+        type=float,
+        default=None,
+        help="Start time offset in seconds",
+    )
+    parser.add_argument(
+        "-t",
+        "--duration",
+        type=float,
+        default=None,
+        help="Max duration per clip in seconds (<= 3.0)",
+    )
+    parser.add_argument(
+        "--speed-to-fit",
+        action="store_true",
+        help="Speed up longer video to fit into 3.0s",
+    )
+    parser.add_argument(
+        "--pingpong",
+        "--boomerang",
+        action="store_true",
+        help="Loop in ping-pong (boomerang) mode",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=30,
+        help="Target FPS (default 30, max 30)",
+    )
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=30,
+        help="Base VP9 CRF quality (0-63, default 30)",
+    )
+    parser.add_argument(
+        "--remove-bg",
+        default=None,
+        help="Color to key out (e.g. green, white, black, or #hex)",
+    )
+
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+
+    in_p, out_p = Path(args.input_dir).resolve(), Path(args.output_dir).resolve()
     in_p.mkdir(parents=True, exist_ok=True)
     out_p.mkdir(parents=True, exist_ok=True)
 
-    cli_args = sys.argv[1:]
     files_to_process = []
 
-    if cli_args:
-        for arg in cli_args:
+    if args.inputs:
+        for arg in args.inputs:
             p = Path(arg).resolve()
             if p.is_file():
                 files_to_process.append(p)
             elif p.is_dir():
                 files_to_process.extend(find_video_files(p))
+            else:
+                print(f"Warning: File or directory not found: {arg}", file=sys.stderr)
     else:
         files_to_process = find_video_files(in_p)
 
@@ -44,7 +128,17 @@ def run(input_dir: str = "input_videos", output_dir: str = "output_stickers") ->
     print("=" * 60)
 
     converter = TelegramConverter()
-    config = ConversionConfig(mode="sticker")
+    config = ConversionConfig(
+        mode=args.mode,
+        start_time=args.start,
+        duration=args.duration,
+        speed_to_fit=args.speed_to_fit,
+        loop_mode="pingpong" if args.pingpong else "normal",
+        fit_mode=args.fit,
+        fps=args.fps,
+        crf=args.crf,
+        remove_bg=args.remove_bg,
+    )
     success_count = 0
 
     for idx, video_path in enumerate(files_to_process, 1):

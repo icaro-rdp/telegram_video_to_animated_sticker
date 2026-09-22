@@ -46,7 +46,9 @@ def cmd_convert(args: argparse.Namespace) -> int:
     )
 
     print(f"Converting: {input_file.name}")
-    print(f"  Mode: {config.mode.capitalize()} | Loop: {config.loop_mode} | FPS: {config.fps}")
+    print(
+        f"  Mode: {config.mode.capitalize()} | Loop: {config.loop_mode} | FPS: {config.fps}"
+    )
     if config.speed_to_fit:
         print("  Speed-to-fit: enabled (accelerating video to fit <= 3s)")
     if config.start_time:
@@ -77,13 +79,18 @@ def cmd_convert(args: argparse.Namespace) -> int:
     print(f"  Duration:   {res.info.duration:.2f}s (Max allowed: 3.00s)")
     print(f"  Codec:      {res.info.video_codec} (libvpx-vp9)")
     print(f"  FPS:        {res.info.fps:.1f}")
-    print(f"  Audio:      {'None (Compliant)' if not res.info.has_audio else 'Present (Invalid)'}")
+    print(
+        f"  Audio:      {'None (Compliant)' if not res.info.has_audio else 'Present (Invalid)'}"
+    )
 
     if res.valid:
         print("\n>>> SUCCESS: Ready for Telegram @Stickers bot! <<<")
         return 0
     else:
-        print("\n>>> WARNING: Output failed one or more Telegram requirements: <<<", file=sys.stderr)
+        print(
+            "\n>>> WARNING: Output failed one or more Telegram requirements: <<<",
+            file=sys.stderr,
+        )
         for issue in res.issues:
             print(f"  - {issue}", file=sys.stderr)
         return 1
@@ -110,7 +117,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
     if args.watch:
         print(f"Watching folder: {in_dir.resolve()}")
         print(f"Output folder:   {out_dir.resolve()}")
-        print("Drop videos into the input folder to automatically convert them. Press Ctrl+C to exit.\n")
+        print(
+            "Drop videos into the input folder to automatically convert them. Press Ctrl+C to exit.\n"
+        )
 
         def on_convert(res):
             if res.error:
@@ -121,7 +130,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
                     f"({res.validation.info.size_kb:.1f} KB, {res.validation.info.width}x{res.validation.info.height})"
                 )
             else:
-                print(f" [INVALID] {res.input_file.name}: {'; '.join(res.validation.issues)}")
+                print(
+                    f" [INVALID] {res.input_file.name}: {'; '.join(res.validation.issues)}"
+                )
 
         watch_folder(
             input_dir=in_dir,
@@ -180,12 +191,28 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     info = res.info
     checks = [
-        ("Container format (.WEBM)", "webm" in info.format_name or "matroska" in info.format_name, info.format_name),
+        (
+            "Container format (.WEBM)",
+            "webm" in info.format_name or "matroska" in info.format_name,
+            info.format_name,
+        ),
         ("Video codec (VP9)", info.video_codec == "vp9", info.video_codec or "unknown"),
-        ("No audio stream", not info.has_audio, "No audio" if not info.has_audio else "Audio detected!"),
+        (
+            "No audio stream",
+            not info.has_audio,
+            "No audio" if not info.has_audio else "Audio detected!",
+        ),
         ("Duration <= 3.0s", info.duration <= 3.05, f"{info.duration:.2f}s"),
-        ("Frame rate <= 30 FPS", (info.fps or 0) <= 30.05, f"{info.fps:.1f} FPS" if info.fps else "N/A"),
-        ("File size <= 256 KB", info.size_bytes <= 256 * 1024, f"{info.size_kb:.1f} KB"),
+        (
+            "Frame rate <= 30 FPS",
+            (info.fps or 0) <= 30.05,
+            f"{info.fps:.1f} FPS" if info.fps else "N/A",
+        ),
+        (
+            "File size <= 256 KB",
+            info.size_bytes <= 256 * 1024,
+            f"{info.size_kb:.1f} KB",
+        ),
     ]
 
     if args.mode == "sticker":
@@ -220,12 +247,16 @@ def cmd_check(args: argparse.Namespace) -> int:
         print("RESULT: PASS - Ready to upload to Telegram @Stickers bot!\n")
         return 0
     else:
-        print("RESULT: FAIL - Video does not meet Telegram requirements.\n", file=sys.stderr)
+        print(
+            "RESULT: FAIL - Video does not meet Telegram requirements.\n",
+            file=sys.stderr,
+        )
         return 1
 
 
 def cmd_web(args: argparse.Namespace) -> int:
     from .web.server import start_server
+
     start_server(host=args.host, port=args.port)
     return 0
 
@@ -241,41 +272,121 @@ def main():
     p_conv = subparsers.add_parser("convert", help="Convert a single video or GIF file")
     p_conv.add_argument("input", help="Path to input video or GIF")
     p_conv.add_argument("-o", "--output", help="Path to output .webm file")
-    p_conv.add_argument("--mode", choices=["sticker", "emoji"], default="sticker", help="Sticker (512px) or Emoji (100x100)")
-    p_conv.add_argument("-ss", "--start", type=float, default=None, help="Start time offset in seconds")
-    p_conv.add_argument("-t", "--duration", type=float, default=None, help="Duration in seconds (max 3.0)")
-    p_conv.add_argument("--speed-to-fit", action="store_true", help="Speed up longer video to fit into 3.0s")
-    p_conv.add_argument("--pingpong", "--boomerang", action="store_true", help="Loop in ping-pong (boomerang) mode")
-    p_conv.add_argument("--fit", choices=["crop", "pad", "stretch"], default="crop", help="Fit method for emoji/aspect ratio")
-    p_conv.add_argument("--fps", type=int, default=30, help="Target FPS (default 30, max 30)")
-    p_conv.add_argument("--crf", type=int, default=30, help="Base VP9 CRF quality (0-63, default 30)")
-    p_conv.add_argument("--remove-bg", default=None, help="Color to key out (e.g. green, white, black, or #hex)")
+    p_conv.add_argument(
+        "--mode",
+        choices=["sticker", "emoji"],
+        default="sticker",
+        help="Sticker (512px) or Emoji (100x100)",
+    )
+    p_conv.add_argument(
+        "-ss", "--start", type=float, default=None, help="Start time offset in seconds"
+    )
+    p_conv.add_argument(
+        "-t",
+        "--duration",
+        type=float,
+        default=None,
+        help="Duration in seconds (max 3.0)",
+    )
+    p_conv.add_argument(
+        "--speed-to-fit",
+        action="store_true",
+        help="Speed up longer video to fit into 3.0s",
+    )
+    p_conv.add_argument(
+        "--fit",
+        choices=["contain", "crop", "pad", "stretch"],
+        default=None,
+        help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
+    )
+    p_conv.add_argument(
+        "--fps", type=int, default=30, help="Target FPS (default 30, max 30)"
+    )
+    p_conv.add_argument(
+        "--crf", type=int, default=30, help="Base VP9 CRF quality (0-63, default 30)"
+    )
+    p_conv.add_argument(
+        "--remove-bg",
+        default=None,
+        help="Color to key out (e.g. green, white, black, or #hex)",
+    )
 
     # Batch subcommand
-    p_batch = subparsers.add_parser("batch", help="Batch convert videos from an input folder to an output folder")
-    p_batch.add_argument("-i", "--input-dir", default="input_videos", help="Input directory containing videos (default: input_videos)")
-    p_batch.add_argument("-o", "--output-dir", default="output_stickers", help="Output directory for stickers (default: output_stickers)")
-    p_batch.add_argument("--mode", choices=["sticker", "emoji"], default="sticker", help="Target mode")
-    p_batch.add_argument("-t", "--duration", type=float, default=None, help="Max duration per clip (max 3.0)")
-    p_batch.add_argument("--speed-to-fit", action="store_true", help="Speed up longer videos to fit into 3.0s")
-    p_batch.add_argument("--pingpong", action="store_true", help="Ping-pong boomerang looping")
-    p_batch.add_argument("--fit", choices=["crop", "pad", "stretch"], default="crop", help="Fit method")
+    p_batch = subparsers.add_parser(
+        "batch", help="Batch convert videos from an input folder to an output folder"
+    )
+    p_batch.add_argument(
+        "-i",
+        "--input-dir",
+        default="input_videos",
+        help="Input directory containing videos (default: input_videos)",
+    )
+    p_batch.add_argument(
+        "-o",
+        "--output-dir",
+        default="output_stickers",
+        help="Output directory for stickers (default: output_stickers)",
+    )
+    p_batch.add_argument(
+        "--mode", choices=["sticker", "emoji"], default="sticker", help="Target mode"
+    )
+    p_batch.add_argument(
+        "-t",
+        "--duration",
+        type=float,
+        default=None,
+        help="Max duration per clip (max 3.0)",
+    )
+    p_batch.add_argument(
+        "--speed-to-fit",
+        action="store_true",
+        help="Speed up longer videos to fit into 3.0s",
+    )
+    p_batch.add_argument(
+        "--pingpong", action="store_true", help="Ping-pong boomerang looping"
+    )
+    p_batch.add_argument(
+        "--fit",
+        choices=["contain", "crop", "pad", "stretch"],
+        default=None,
+        help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
+    )
     p_batch.add_argument("--fps", type=int, default=30, help="Target FPS (max 30)")
     p_batch.add_argument("--crf", type=int, default=30, help="Base VP9 CRF")
     p_batch.add_argument("--remove-bg", default=None, help="Color to remove")
-    p_batch.add_argument("--overwrite", action="store_true", help="Overwrite existing output files")
-    p_batch.add_argument("-r", "--recursive", action="store_true", help="Recursively process subfolders")
-    p_batch.add_argument("-w", "--watch", action="store_true", help="Watch input directory and continuously convert newly added videos")
+    p_batch.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing output files"
+    )
+    p_batch.add_argument(
+        "-r", "--recursive", action="store_true", help="Recursively process subfolders"
+    )
+    p_batch.add_argument(
+        "-w",
+        "--watch",
+        action="store_true",
+        help="Watch input directory and continuously convert newly added videos",
+    )
 
     # Check subcommand
-    p_check = subparsers.add_parser("check", help="Verify if a .webm file satisfies Telegram sticker/emoji rules")
+    p_check = subparsers.add_parser(
+        "check", help="Verify if a .webm file satisfies Telegram sticker/emoji rules"
+    )
     p_check.add_argument("file", help="Path to .webm file to inspect")
-    p_check.add_argument("--mode", choices=["sticker", "emoji"], default="sticker", help="Validation mode")
+    p_check.add_argument(
+        "--mode",
+        choices=["sticker", "emoji"],
+        default="sticker",
+        help="Validation mode",
+    )
 
     # Web subcommand
     p_web = subparsers.add_parser("web", help="Launch local browser-based UI")
-    p_web.add_argument("--host", default="127.0.0.1", help="Host interface (default: 127.0.0.1)")
-    p_web.add_argument("-p", "--port", type=int, default=8080, help="Port to listen on (default: 8080)")
+    p_web.add_argument(
+        "--host", default="127.0.0.1", help="Host interface (default: 127.0.0.1)"
+    )
+    p_web.add_argument(
+        "-p", "--port", type=int, default=8080, help="Port to listen on (default: 8080)"
+    )
 
     args = parser.parse_args()
 

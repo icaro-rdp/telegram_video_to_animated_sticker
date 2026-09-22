@@ -13,10 +13,9 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
-from ..batch import process_batch, find_video_files
+from ..batch import process_batch
 from ..converter import ConversionConfig, TelegramConverter
 from ..exceptions import TelegramStickerError
-from ..validator import validate_telegram_webm
 
 STATIC_DIR = Path(__file__).parent / "static"
 TEMP_DIR = Path(tempfile.gettempdir()) / "tg_sticker_web"
@@ -32,7 +31,9 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == "/api/status":
-            self._send_json({"status": "ok", "message": "Telegram Sticker Converter Ready"})
+            self._send_json(
+                {"status": "ok", "message": "Telegram Sticker Converter Ready"}
+            )
             return
 
         elif path.startswith("/output/"):
@@ -55,14 +56,24 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/folders":
             in_dir = Path("input_videos").resolve()
             out_dir = Path("output_stickers").resolve()
-            in_files = [f.name for f in in_dir.glob("*") if f.is_file()] if in_dir.exists() else []
-            out_files = [f.name for f in out_dir.glob("*.webm") if f.is_file()] if out_dir.exists() else []
-            self._send_json({
-                "input_dir": str(in_dir),
-                "output_dir": str(out_dir),
-                "input_files": in_files,
-                "output_files": out_files,
-            })
+            in_files = (
+                [f.name for f in in_dir.glob("*") if f.is_file()]
+                if in_dir.exists()
+                else []
+            )
+            out_files = (
+                [f.name for f in out_dir.glob("*.webm") if f.is_file()]
+                if out_dir.exists()
+                else []
+            )
+            self._send_json(
+                {
+                    "input_dir": str(in_dir),
+                    "output_dir": str(out_dir),
+                    "input_files": in_files,
+                    "output_files": out_files,
+                }
+            )
             return
 
         super().do_GET()
@@ -107,8 +118,18 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             speed_to_fit = form.get("speed_to_fit", ["false"])[0].lower() == "true"
             loop_mode = form.get("loop_mode", ["normal"])[0]
-            fit_mode = form.get("fit_mode", ["crop"])[0]
+            fit_mode_raw = form.get("fit_mode", [""])[0]
+            fit_mode = (
+                fit_mode_raw
+                if fit_mode_raw in ("contain", "crop", "pad", "stretch")
+                else None
+            )
             remove_bg = form.get("remove_bg", [""])[0] or None
+            fps_str = form.get("fps", ["30"])[0]
+            fps = min(int(fps_str), 30) if fps_str else 30
+            crf_str = form.get("crf", ["30"])[0]
+            crf = max(0, min(int(crf_str), 63)) if crf_str else 30
+            preserve_alpha = form.get("preserve_alpha", ["true"])[0].lower() == "true"
 
             # Save input to temp file
             in_ext = Path(filename).suffix or ".mp4"
@@ -127,35 +148,50 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 speed_to_fit=speed_to_fit,
                 loop_mode=loop_mode,
                 fit_mode=fit_mode,
+                fps=fps,
+                crf=crf,
                 remove_bg=remove_bg,
+                preserve_alpha=preserve_alpha,
             )
 
             converter = TelegramConverter()
             result = converter.convert(in_temp, out_temp, config=cfg)
 
             info = result.info
-            self._send_json({
-                "success": True,
-                "valid": result.valid,
-                "issues": result.issues,
-                "download_url": f"/output/{out_filename}",
-                "filename": out_filename,
-                "info": {
-                    "width": info.width,
-                    "height": info.height,
-                    "duration": info.duration,
-                    "fps": info.fps,
-                    "size_bytes": info.size_bytes,
-                    "size_kb": info.size_kb,
-                    "codec": info.video_codec,
-                    "has_audio": info.has_audio,
-                    "has_alpha": info.has_alpha,
-                } if info else None,
-            })
+            self._send_json(
+                {
+                    "success": True,
+                    "valid": result.valid,
+                    "issues": result.issues,
+                    "download_url": f"/output/{out_filename}",
+                    "filename": out_filename,
+                    "info": {
+                        "width": info.width,
+                        "height": info.height,
+                        "duration": info.duration,
+                        "fps": info.fps,
+                        "size_bytes": info.size_bytes,
+                        "size_kb": info.size_kb,
+                        "codec": info.video_codec,
+                        "has_audio": info.has_audio,
+                        "has_alpha": info.has_alpha,
+                    }
+                    if info
+                    else None,
+                }
+            )
         except TelegramStickerError as e:
-            self._send_json({"error": str(e), "error_type": e.__class__.__name__}, status=400)
+            self._send_json(
+                {"error": str(e), "error_type": e.__class__.__name__}, status=400
+            )
         except Exception as e:
-            self._send_json({"error": f"Internal server error: {e}", "error_type": "InternalServerError"}, status=500)
+            self._send_json(
+                {
+                    "error": f"Internal server error: {e}",
+                    "error_type": "InternalServerError",
+                },
+                status=500,
+            )
 
     def _handle_batch(self):
         try:
@@ -164,14 +200,32 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
             params = json.loads(body) if body else {}
 
             mode = params.get("mode", "sticker")
+            duration = float(params["duration"]) if params.get("duration") else None
             speed_to_fit = bool(params.get("speed_to_fit", False))
             loop_mode = params.get("loop_mode", "normal")
+            fit_mode_raw = params.get("fit_mode")
+            fit_mode = (
+                fit_mode_raw
+                if fit_mode_raw in ("contain", "crop", "pad", "stretch")
+                else None
+            )
+            fps = min(int(params.get("fps", 30)), 30)
+            crf = max(0, min(int(params.get("crf", 30)), 63))
+            remove_bg = params.get("remove_bg") or None
+            preserve_alpha = bool(params.get("preserve_alpha", True))
             overwrite = bool(params.get("overwrite", False))
+            recursive = bool(params.get("recursive", False))
 
             cfg = ConversionConfig(
                 mode=mode,
+                duration=duration,
                 speed_to_fit=speed_to_fit,
                 loop_mode=loop_mode,
+                fit_mode=fit_mode,
+                fps=fps,
+                crf=crf,
+                remove_bg=remove_bg,
+                preserve_alpha=preserve_alpha,
             )
 
             summary = process_batch(
@@ -179,19 +233,30 @@ class StickerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 output_dir="output_stickers",
                 config=cfg,
                 overwrite=overwrite,
+                recursive=recursive,
             )
 
-            self._send_json({
-                "success": True,
-                "total": summary.total,
-                "succeeded": summary.succeeded,
-                "skipped": summary.skipped,
-                "failed": summary.failed,
-            })
+            self._send_json(
+                {
+                    "success": True,
+                    "total": summary.total,
+                    "succeeded": summary.succeeded,
+                    "skipped": summary.skipped,
+                    "failed": summary.failed,
+                }
+            )
         except TelegramStickerError as e:
-            self._send_json({"error": str(e), "error_type": e.__class__.__name__}, status=400)
+            self._send_json(
+                {"error": str(e), "error_type": e.__class__.__name__}, status=400
+            )
         except Exception as e:
-            self._send_json({"error": f"Internal server error: {e}", "error_type": "InternalServerError"}, status=500)
+            self._send_json(
+                {
+                    "error": f"Internal server error: {e}",
+                    "error_type": "InternalServerError",
+                },
+                status=500,
+            )
 
     def _send_json(self, data: dict, status: int = 200):
         body = json.dumps(data).encode("utf-8")
@@ -208,10 +273,10 @@ def start_server(host: str = "127.0.0.1", port: int = 8080):
     socketserver.TCPServer.allow_reuse_address = True
     try:
         with socketserver.TCPServer(server_address, StickerRequestHandler) as httpd:
-            print(f"==================================================")
-            print(f"  Telegram Sticker Converter Web UI Running at:")
+            print("==================================================")
+            print("  Telegram Sticker Converter Web UI Running at:")
             print(f"  http://{host}:{port}/")
-            print(f"==================================================")
+            print("==================================================")
             print("Press Ctrl+C to stop the server.")
             httpd.serve_forever()
     except OSError as e:

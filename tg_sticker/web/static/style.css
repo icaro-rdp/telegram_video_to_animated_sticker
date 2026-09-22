@@ -534,6 +534,34 @@ select {
   align-items: center;
 }
 
+.batch-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.batch-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 6px;
+  background: #202b3a;
+  border-radius: 4px;
+}
+
+input[type="text"] {
+  background: #161e29;
+  border: 1px solid var(--card-border);
+  color: #fff;
+  border-radius: var(--radius-sm);
+}
+
 .hidden {
   display: none !important;
 }
+

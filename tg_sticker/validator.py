@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .exceptions import (
     CorruptMediaError,
@@ -30,14 +30,14 @@ class MediaInfo:
     format_name: str
     duration: float
     size_bytes: int
-    video_codec: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    fps: Optional[float] = None
+    video_codec: str | None = None
+    width: int | None = None
+    height: int | None = None
+    fps: float | None = None
     has_audio: bool = False
     has_alpha: bool = False
-    pix_fmt: Optional[str] = None
-    raw_probe: Dict[str, Any] = field(default_factory=dict)
+    pix_fmt: str | None = None
+    raw_probe: dict[str, Any] = field(default_factory=dict)
 
     @property
     def size_kb(self) -> float:
@@ -48,8 +48,8 @@ class MediaInfo:
 class ValidationResult:
     valid: bool
     mode: str
-    issues: List[str]
-    info: Optional[MediaInfo] = None
+    issues: list[str]
+    info: MediaInfo | None = None
 
     def summary(self) -> str:
         if self.valid:
@@ -75,7 +75,7 @@ def ensure_ffmpeg_available() -> str:
     return _resolve_tool("ffmpeg", FFmpegNotFoundError)
 
 
-def _parse_fps(rate_str: Optional[str]) -> Optional[float]:
+def _parse_fps(rate_str: str | None) -> float | None:
     if not rate_str or rate_str == "0/0":
         return None
     if "/" in rate_str:
@@ -85,7 +85,7 @@ def _parse_fps(rate_str: Optional[str]) -> Optional[float]:
     return float(rate_str)
 
 
-def _extract_stream_duration(st: Dict[str, Any], fallback: float) -> float:
+def _extract_stream_duration(st: dict[str, Any], fallback: float) -> float:
     if fallback > 0:
         return fallback
     if "duration" in st:
@@ -110,8 +110,10 @@ def probe_media(file_path: str | Path) -> MediaInfo:
 
     cmd = [
         ffprobe_bin,
-        "-v", "error",
-        "-print_format", "json",
+        "-v",
+        "error",
+        "-print_format",
+        "json",
         "-show_format",
         "-show_streams",
         file_path_str,
@@ -127,12 +129,17 @@ def probe_media(file_path: str | Path) -> MediaInfo:
             check=True,
         )
     except subprocess.CalledProcessError as e:
-        raise ProbeError(f"ffprobe failed to inspect {file_path_str}: {e.stderr.strip()}", stderr=e.stderr)
+        raise ProbeError(
+            f"ffprobe failed to inspect {file_path_str}: {e.stderr.strip()}",
+            stderr=e.stderr,
+        )
 
     try:
         probe_data = json.loads(res.stdout)
     except json.JSONDecodeError as e:
-        raise CorruptMediaError(f"Could not parse probe metadata for {file_path_str}: {e}")
+        raise CorruptMediaError(
+            f"Could not parse probe metadata for {file_path_str}: {e}"
+        )
 
     format_data = probe_data.get("format", {})
     streams = probe_data.get("streams", [])
@@ -177,14 +184,16 @@ def probe_media(file_path: str | Path) -> MediaInfo:
     )
 
 
-def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> ValidationResult:
+def validate_telegram_webm(
+    file_path: str | Path, mode: str = "sticker"
+) -> ValidationResult:
     """Validates a file against Telegram Video Sticker / Emoji technical guidelines."""
     mode = mode.lower()
     if mode not in ("sticker", "emoji"):
         raise ValidationError(f"Invalid mode '{mode}': must be 'sticker' or 'emoji'")
 
     info = probe_media(file_path)
-    issues: List[str] = []
+    issues: list[str] = []
 
     if not any(f in info.format_name for f in ("webm", "matroska")):
         issues.append(f"Format is not WebM (got: {info.format_name})")
@@ -203,18 +212,27 @@ def validate_telegram_webm(file_path: str | Path, mode: str = "sticker") -> Vali
 
     if info.size_bytes > MAX_STICKER_BYTES:
         excess = info.size_bytes - MAX_STICKER_BYTES
-        issues.append(f"File size exceeds 256 KB limit: {info.size_kb:.2f} KB ({excess} bytes over limit)")
+        issues.append(
+            f"File size exceeds 256 KB limit: {info.size_kb:.2f} KB ({excess} bytes over limit)"
+        )
 
     if not info.width or not info.height:
         issues.append("Unable to determine video dimensions")
     elif mode == "sticker":
         max_dim, min_dim = max(info.width, info.height), min(info.width, info.height)
         if max_dim != 512:
-            issues.append(f"For stickers, one side must be exactly 512px (got: {info.width}x{info.height})")
+            issues.append(
+                f"For stickers, one side must be exactly 512px (got: {info.width}x{info.height})"
+            )
         if min_dim > 512:
-            issues.append(f"For stickers, the other side must be <= 512px (got: {info.width}x{info.height})")
-    elif mode == "emoji":
-        if info.width != 100 or info.height != 100:
-            issues.append(f"For emoji, dimensions must be exactly 100x100px (got: {info.width}x{info.height})")
+            issues.append(
+                f"For stickers, the other side must be <= 512px (got: {info.width}x{info.height})"
+            )
+    elif mode == "emoji" and (info.width != 100 or info.height != 100):
+        issues.append(
+            f"For emoji, dimensions must be exactly 100x100px (got: {info.width}x{info.height})"
+        )
 
-    return ValidationResult(valid=(len(issues) == 0), mode=mode, issues=issues, info=info)
+    return ValidationResult(
+        valid=(len(issues) == 0), mode=mode, issues=issues, info=info
+    )
