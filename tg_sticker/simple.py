@@ -6,8 +6,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from .batch import SUPPORTED_EXTENSIONS, convert_batch_file, find_video_files
-from .converter import ConversionConfig, TelegramConverter
+from tg_sticker.batch import SUPPORTED_EXTENSIONS, convert_batch_file, find_video_files
+from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.utils.logger import logger
 
 
 def run(
@@ -107,25 +108,30 @@ def run(
             elif p.is_dir():
                 files_to_process.extend(find_video_files(p))
             else:
-                print(f"Warning: File or directory not found: {arg}", file=sys.stderr)
+                logger.warn("File or directory not found: %s", arg)
     else:
         files_to_process = find_video_files(in_p)
 
     if not files_to_process:
-        print("\n" + "=" * 60)
-        print("  Telegram Sticker Converter - One-Click Mode")
-        print("=" * 60)
-        print(f"No videos found in: {in_p}")
-        print("\nHow to use:")
-        print(f"1. Drop any video or GIF into the '{in_p.name}' folder.")
-        print(f"   Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS)[:8])}, etc.")
-        print("2. Run 'convert' again.")
-        print("=" * 60 + "\n")
+        logger.divider(length=60)
+        logger.info("  Telegram Sticker Converter - One-Click Mode")
+        logger.divider(length=60)
+        logger.info("No videos found in: %s", in_p)
+        logger.info("How to use:")
+        logger.info("1. Drop any video or GIF into the '%s' folder.", in_p.name)
+        logger.info(
+            "   Supported: %s, etc.",
+            ", ".join(sorted(SUPPORTED_EXTENSIONS)[:8]),
+        )
+        logger.info("2. Run 'convert' again.")
+        logger.divider(length=60)
         return 0
 
-    print("\n" + "=" * 60)
-    print(f"  Converting {len(files_to_process)} video(s) into Telegram stickers...")
-    print("=" * 60)
+    logger.divider(length=60)
+    logger.info(
+        "  Converting %d video(s) into Telegram stickers...", len(files_to_process)
+    )
+    logger.divider(length=60)
 
     converter = TelegramConverter()
     config = ConversionConfig(
@@ -143,10 +149,11 @@ def run(
 
     for idx, video_path in enumerate(files_to_process, 1):
         dest_file = out_p / f"{video_path.stem}.webm"
-        print(
-            f"[{idx}/{len(files_to_process)}] Processing: {video_path.name} ...",
-            end=" ",
-            flush=True,
+        logger.info(
+            "[%d/%d] Processing: %s ...",
+            idx,
+            len(files_to_process),
+            video_path.name,
         )
 
         res = convert_batch_file(
@@ -155,17 +162,22 @@ def run(
         if res.validation and res.validation.valid:
             success_count += 1
             info = res.validation.info
-            print(f"DONE! ({info.size_kb:.1f} KB, {info.width}x{info.height})")
+            logger.info(
+                "  -> DONE! (%.1f KB, %dx%d)", info.size_kb, info.width, info.height
+            )
         elif res.validation:
-            print(f"WARNING: {'; '.join(res.validation.issues)}")
+            logger.warn("  -> WARNING: %s", "; ".join(res.validation.issues))
         else:
-            print(f"FAILED: {res.error}")
+            logger.error("  -> FAILED: %s", res.error)
 
-    print("=" * 60)
-    print(
-        f"Finished! {success_count}/{len(files_to_process)} sticker(s) created in: {out_p}"
+    logger.divider(length=60)
+    logger.info(
+        "Finished! %d/%d sticker(s) created in: %s",
+        success_count,
+        len(files_to_process),
+        out_p,
     )
-    print("Ready to upload directly to @Stickers on Telegram!\n")
+    logger.info("Ready to upload directly to @Stickers on Telegram!")
     return 0
 
 

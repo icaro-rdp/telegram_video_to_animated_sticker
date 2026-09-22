@@ -10,7 +10,7 @@ support, install `colorama` (it will be used automatically).
 import logging
 import sys
 
-_LOGGER_NAME = "image_authenticity"
+_LOGGER_NAME = "tg_sticker"
 _logger = logging.getLogger(_LOGGER_NAME)
 
 
@@ -77,11 +77,14 @@ def _ensure_configured():
         _logger.setLevel(logging.INFO)
 
 
-def set_level(level_name: str):
+def set_level(level_name: str) -> None:
     """Set logging level by name (DEBUG, INFO, WARNING, ERROR).
 
     Args:
-        level_name: case-insensitive level name
+        level_name: Case-insensitive level name.
+
+    Raises:
+        ValueError: If level_name is not a recognized log level.
     """
     _ensure_configured()
     level = getattr(logging, level_name.upper(), None)
@@ -90,27 +93,37 @@ def set_level(level_name: str):
     _logger.setLevel(level)
 
 
-def info(msg: str, *args, **kwargs):
+def info(msg: str, *args: object, **kwargs: object) -> None:
+    """Log an info message."""
     _ensure_configured()
     _logger.info(msg, *args, **kwargs)
 
 
-def warn(msg: str, *args, **kwargs):
+def warn(msg: str, *args: object, **kwargs: object) -> None:
+    """Log a warning message."""
     _ensure_configured()
     _logger.warning(msg, *args, **kwargs)
 
 
-def error(msg: str, *args, **kwargs):
+def warning(msg: str, *args: object, **kwargs: object) -> None:
+    """Log a warning message (alias for warn)."""
+    _ensure_configured()
+    _logger.warning(msg, *args, **kwargs)
+
+
+def error(msg: str, *args: object, **kwargs: object) -> None:
+    """Log an error message."""
     _ensure_configured()
     _logger.error(msg, *args, **kwargs)
 
 
-def debug(msg: str, *args, **kwargs):
+def debug(msg: str, *args: object, **kwargs: object) -> None:
+    """Log a debug message."""
     _ensure_configured()
     _logger.debug(msg, *args, **kwargs)
 
 
-def get_logger(name: str | None = None):
+def get_logger(name: str | None = None) -> logging.Logger:
     """Return the underlying logger (for advanced usage)."""
     _ensure_configured()
     return logging.getLogger(name or _LOGGER_NAME)
@@ -121,30 +134,47 @@ class Logger:
     """Wrapper class providing logging methods."""
 
     @staticmethod
-    def info(msg: str, *args, **kwargs):
+    def info(msg: str, *args: object, **kwargs: object) -> None:
+        """Log an info message."""
         info(msg, *args, **kwargs)
 
     @staticmethod
-    def warn(msg: str, *args, **kwargs):
+    def warn(msg: str, *args: object, **kwargs: object) -> None:
+        """Log a warning message."""
         warn(msg, *args, **kwargs)
 
     @staticmethod
-    def error(msg: str, *args, **kwargs):
+    def warning(msg: str, *args: object, **kwargs: object) -> None:
+        """Log a warning message."""
+        warning(msg, *args, **kwargs)
+
+    @staticmethod
+    def error(msg: str, *args: object, **kwargs: object) -> None:
+        """Log an error message."""
         error(msg, *args, **kwargs)
 
     @staticmethod
-    def debug(msg: str, *args, **kwargs):
+    def debug(msg: str, *args: object, **kwargs: object) -> None:
+        """Log a debug message."""
         debug(msg, *args, **kwargs)
 
     @staticmethod
-    def get_logger(name: str | None = None):
+    def get_logger(name: str | None = None) -> logging.Logger:
+        """Return the underlying logger."""
         return get_logger(name)
 
+    @staticmethod
+    def divider(text: str | None = None, length: int = 50) -> None:
+        """Log a divider banner."""
+        print_divider(text, length=length)
 
-def print_divider(text: str | None = None) -> None:
+
+def print_divider(text: str | None = None, length: int = 50) -> None:
+    """Log a centered divider line."""
     if not text:
-        text = ""
-    return print(f"{text:=^50s}")
+        info("%s", "=" * length)
+    else:
+        info("%s", f" {text} ".center(length, "="))
 
 
 # Export a singleton logger instance

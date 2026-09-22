@@ -6,15 +6,16 @@ import argparse
 import sys
 from pathlib import Path
 
-from .batch import process_batch, watch_folder
-from .converter import ConversionConfig, TelegramConverter
-from .exceptions import (
+from tg_sticker.batch import process_batch, watch_folder
+from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.exceptions import (
     DependencyError,
     EncodingError,
     MediaNotFoundError,
     TelegramStickerError,
 )
-from .validator import validate_telegram_webm
+from tg_sticker.utils.logger import logger
+from tg_sticker.validator import validate_telegram_webm
 
 
 def format_size(bytes_val: int) -> str:
@@ -25,7 +26,7 @@ def format_size(bytes_val: int) -> str:
 def cmd_convert(args: argparse.Namespace) -> int:
     input_file = Path(args.input).resolve()
     if not input_file.is_file():
-        print(f"Error: Input file not found: {input_file}", file=sys.stderr)
+        logger.error("Input file not found: %s", input_file)
         return 1
 
     if args.output:
@@ -45,54 +46,57 @@ def cmd_convert(args: argparse.Namespace) -> int:
         remove_bg=args.remove_bg,
     )
 
-    print(f"Converting: {input_file.name}")
-    print(
-        f"  Mode: {config.mode.capitalize()} | Loop: {config.loop_mode} | FPS: {config.fps}"
+    logger.info("Converting: %s", input_file.name)
+    logger.info(
+        "  Mode: %s | Loop: %s | FPS: %d",
+        config.mode.capitalize(),
+        config.loop_mode,
+        config.fps,
     )
     if config.speed_to_fit:
-        print("  Speed-to-fit: enabled (accelerating video to fit <= 3s)")
+        logger.info("  Speed-to-fit: enabled (accelerating video to fit <= 3s)")
     if config.start_time:
-        print(f"  Start offset: {config.start_time}s")
+        logger.info("  Start offset: %ss", config.start_time)
 
     converter = TelegramConverter()
     try:
         res = converter.convert(input_file, output_file, config=config)
     except DependencyError as e:
-        print(f"\n[DEPENDENCY ERROR] {e}", file=sys.stderr)
+        logger.error("[DEPENDENCY ERROR] %s", e)
         return 1
     except MediaNotFoundError as e:
-        print(f"\n[FILE NOT FOUND] {e}", file=sys.stderr)
+        logger.error("[FILE NOT FOUND] %s", e)
         return 1
     except EncodingError as e:
-        print(f"\n[ENCODING ERROR] {e}", file=sys.stderr)
+        logger.error("[ENCODING ERROR] %s", e)
         return 1
     except TelegramStickerError as e:
-        print(f"\n[ERROR] {e.__class__.__name__}: {e}", file=sys.stderr)
+        logger.error("[ERROR] %s: %s", e.__class__.__name__, e)
         return 1
     except Exception as e:
-        print(f"\n[UNEXPECTED ERROR] {e}", file=sys.stderr)
+        logger.error("[UNEXPECTED ERROR] %s", e)
         return 1
 
-    print(f"\nOutput saved: {output_file}")
-    print(f"  Size:       {format_size(res.info.size_bytes)} (Max allowed: 256.0 KB)")
-    print(f"  Dimensions: {res.info.width}x{res.info.height}")
-    print(f"  Duration:   {res.info.duration:.2f}s (Max allowed: 3.00s)")
-    print(f"  Codec:      {res.info.video_codec} (libvpx-vp9)")
-    print(f"  FPS:        {res.info.fps:.1f}")
-    print(
-        f"  Audio:      {'None (Compliant)' if not res.info.has_audio else 'Present (Invalid)'}"
+    logger.info("Output saved: %s", output_file)
+    logger.info(
+        "  Size:       %s (Max allowed: 256.0 KB)", format_size(res.info.size_bytes)
+    )
+    logger.info("  Dimensions: %dx%d", res.info.width, res.info.height)
+    logger.info("  Duration:   %.2fs (Max allowed: 3.00s)", res.info.duration)
+    logger.info("  Codec:      %s (libvpx-vp9)", res.info.video_codec)
+    logger.info("  FPS:        %.1f", res.info.fps)
+    logger.info(
+        "  Audio:      %s",
+        "None (Compliant)" if not res.info.has_audio else "Present (Invalid)",
     )
 
     if res.valid:
-        print("\n>>> SUCCESS: Ready for Telegram @Stickers bot! <<<")
+        logger.info(">>> SUCCESS: Ready for Telegram @Stickers bot! <<<")
         return 0
     else:
-        print(
-            "\n>>> WARNING: Output failed one or more Telegram requirements: <<<",
-            file=sys.stderr,
-        )
+        logger.warn(">>> WARNING: Output failed one or more Telegram requirements: <<<")
         for issue in res.issues:
-            print(f"  - {issue}", file=sys.stderr)
+            logger.warn("  - %s", issue)
         return 1
 
 
@@ -115,23 +119,29 @@ def cmd_batch(args: argparse.Namespace) -> int:
     )
 
     if args.watch:
-        print(f"Watching folder: {in_dir.resolve()}")
-        print(f"Output folder:   {out_dir.resolve()}")
-        print(
-            "Drop videos into the input folder to automatically convert them. Press Ctrl+C to exit.\n"
+        logger.info("Watching folder: %s", in_dir.resolve())
+        logger.info("Output folder:   %s", out_dir.resolve())
+        logger.info(
+            "Drop videos into the input folder to automatically convert them. Press Ctrl+C to exit."
         )
 
         def on_convert(res):
             if res.error:
-                print(f" [FAILED] {res.input_file.name}: {res.error}")
+                logger.error(" [FAILED] %s: %s", res.input_file.name, res.error)
             elif res.validation and res.validation.valid:
-                print(
-                    f" [CONVERTED] {res.input_file.name} -> {res.output_file.name} "
-                    f"({res.validation.info.size_kb:.1f} KB, {res.validation.info.width}x{res.validation.info.height})"
+                logger.info(
+                    " [CONVERTED] %s -> %s (%s, %dx%d)",
+                    res.input_file.name,
+                    res.output_file.name,
+                    format_size(res.validation.info.size_bytes),
+                    res.validation.info.width,
+                    res.validation.info.height,
                 )
             else:
-                print(
-                    f" [INVALID] {res.input_file.name}: {'; '.join(res.validation.issues)}"
+                logger.warn(
+                    " [INVALID] %s: %s",
+                    res.input_file.name,
+                    "; ".join(res.validation.issues) if res.validation else "Unknown",
                 )
 
         watch_folder(
@@ -142,11 +152,11 @@ def cmd_batch(args: argparse.Namespace) -> int:
         )
         return 0
 
-    print(f"Batch converting videos from: {in_dir.resolve()}")
-    print(f"Saving stickers to:           {out_dir.resolve()}")
+    logger.info("Batch converting videos from: %s", in_dir.resolve())
+    logger.info("Saving stickers to:           %s", out_dir.resolve())
 
     def progress(p: Path, cur: int, tot: int):
-        print(f"[{cur}/{tot}] Processing {p.name}...", end="\r", flush=True)
+        logger.info("[%d/%d] Processing %s...", cur, tot, p.name)
 
     summary = process_batch(
         input_dir=in_dir,
@@ -157,23 +167,27 @@ def cmd_batch(args: argparse.Namespace) -> int:
         progress_callback=progress,
     )
 
-    print("\n" + "=" * 50)
-    print("Batch Conversion Summary:")
-    print(f"  Total videos found: {summary.total}")
-    print(f"  Successfully converted: {summary.succeeded}")
-    print(f"  Skipped (already exists): {summary.skipped}")
-    print(f"  Failed: {summary.failed}")
-    print("=" * 50)
+    logger.divider(length=50)
+    logger.info("Batch Conversion Summary:")
+    logger.info("  Total videos found: %d", summary.total)
+    logger.info("  Successfully converted: %d", summary.succeeded)
+    logger.info("  Skipped (already exists): %d", summary.skipped)
+    logger.info("  Failed: %d", summary.failed)
+    logger.divider(length=50)
 
     for r in summary.results:
         if r.error:
-            print(f"  x {r.input_file.name}: {r.error}")
+            logger.error("  x %s: %s", r.input_file.name, r.error)
         elif r.validation and not r.validation.valid:
-            print(f"  ! {r.input_file.name}: {'; '.join(r.validation.issues)}")
+            logger.warn("  ! %s: %s", r.input_file.name, "; ".join(r.validation.issues))
         elif not r.skipped and r.validation:
-            print(
-                f"  ✓ {r.input_file.name} -> {r.output_file.name} "
-                f"({r.validation.info.size_kb:.1f} KB, {r.validation.info.width}x{r.validation.info.height})"
+            logger.info(
+                "  ✓ %s -> %s (%s, %dx%d)",
+                r.input_file.name,
+                r.output_file.name,
+                format_size(r.validation.info.size_bytes),
+                r.validation.info.width,
+                r.validation.info.height,
             )
 
     return 0 if summary.failed == 0 else 1
@@ -182,12 +196,14 @@ def cmd_batch(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     target = Path(args.file).resolve()
     if not target.is_file():
-        print(f"Error: File not found: {target}", file=sys.stderr)
+        logger.error("Error: File not found: %s", target)
         return 1
 
     res = validate_telegram_webm(target, mode=args.mode)
-    print(f"\nChecking Telegram Compliance for: {target.name} (Mode: {args.mode})")
-    print("-" * 55)
+    logger.info(
+        "Checking Telegram Compliance for: %s (Mode: %s)", target.name, args.mode
+    )
+    logger.divider(length=55)
 
     info = res.info
     checks = [
@@ -238,19 +254,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     for name, passed, val in checks:
         icon = "✓" if passed else "✗"
         status = f"[{icon}] {name:<45} : {val}"
-        print(status)
-        if not passed:
+        if passed:
+            logger.info("%s", status)
+        else:
+            logger.error("%s", status)
             all_passed = False
 
-    print("-" * 55)
+    logger.divider(length=55)
     if all_passed:
-        print("RESULT: PASS - Ready to upload to Telegram @Stickers bot!\n")
+        logger.info("RESULT: PASS - Ready to upload to Telegram @Stickers bot!")
         return 0
     else:
-        print(
-            "RESULT: FAIL - Video does not meet Telegram requirements.\n",
-            file=sys.stderr,
-        )
+        logger.error("RESULT: FAIL - Video does not meet Telegram requirements.")
         return 1
 
 

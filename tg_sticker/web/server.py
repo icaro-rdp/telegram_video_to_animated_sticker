@@ -13,9 +13,10 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
-from ..batch import process_batch
-from ..converter import ConversionConfig, TelegramConverter
-from ..exceptions import TelegramStickerError
+from tg_sticker.batch import process_batch
+from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.exceptions import TelegramStickerError
+from tg_sticker.utils.logger import logger
 
 STATIC_DIR = Path(__file__).parent / "static"
 TEMP_DIR = Path(tempfile.gettempdir()) / "tg_sticker_web"
@@ -273,11 +274,11 @@ def start_server(host: str = "127.0.0.1", port: int = 8080):
     socketserver.TCPServer.allow_reuse_address = True
     try:
         with socketserver.TCPServer(server_address, StickerRequestHandler) as httpd:
-            print("==================================================")
-            print("  Telegram Sticker Converter Web UI Running at:")
-            print(f"  http://{host}:{port}/")
-            print("==================================================")
-            print("Press Ctrl+C to stop the server.")
+            logger.divider(length=50)
+            logger.info("  Telegram Sticker Converter Web UI Running at:")
+            logger.info("  http://%s:%d/", host, port)
+            logger.divider(length=50)
+            logger.info("Press Ctrl+C to stop the server.")
             httpd.serve_forever()
     except OSError as e:
         is_port_in_use = (
@@ -288,7 +289,7 @@ def start_server(host: str = "127.0.0.1", port: int = 8080):
         )
         if is_port_in_use:
             fallback_port = port + 1
-            print(f"Port {port} busy, attempting port {fallback_port}...")
+            logger.warn("Port %d busy, attempting port %d...", port, fallback_port)
             start_server(host=host, port=fallback_port)
         else:
             raise
