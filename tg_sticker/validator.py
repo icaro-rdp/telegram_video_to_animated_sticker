@@ -119,6 +119,10 @@ def probe_media(file_path: str | Path) -> MediaInfo:
         file_path_str,
     ]
 
+    file_size = os.path.getsize(file_path_str)
+    if file_size == 0:
+        raise CorruptMediaError(f"Media file is empty (0 bytes): {file_path_str}")
+
     try:
         res = subprocess.run(
             cmd,
@@ -129,10 +133,29 @@ def probe_media(file_path: str | Path) -> MediaInfo:
             check=True,
         )
     except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.strip()
+        if file_size < 1024 or any(
+            marker in err_msg
+            for marker in (
+                "EBML",
+                "Duplicate element",
+                "exceeds containing master element",
+                "End of file",
+            )
+        ):
+            summary = "file appears empty or incomplete"
+            raise ProbeError(
+                f"ffprobe failed to inspect {file_path_str} ({summary}, {file_size} bytes): {err_msg}",
+                cmd=cmd,
+                returncode=e.returncode,
+                stderr=e.stderr,
+            ) from e
         raise ProbeError(
-            f"ffprobe failed to inspect {file_path_str}: {e.stderr.strip()}",
+            f"ffprobe failed to inspect {file_path_str}: {err_msg}",
+            cmd=cmd,
+            returncode=e.returncode,
             stderr=e.stderr,
-        )
+        ) from e
 
     try:
         probe_data = json.loads(res.stdout)

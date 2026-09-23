@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +86,10 @@ export function BatchConverter() {
     setErrorMessage(null);
     setBatchResult(null);
 
+    const toastId = toast.loading("Processing batch...", {
+      description: `Converting ${folders?.input_files.length ?? 0} videos with VP9 engine`,
+    });
+
     try {
       const result = await runBatchProcess({
         mode,
@@ -101,9 +107,25 @@ export function BatchConverter() {
 
       setBatchResult(result);
       await loadFolders();
+
+      if (result.failed === 0) {
+        toast.success("Batch Completed!", {
+          id: toastId,
+          description: `Successfully converted ${result.succeeded} stickers (${result.skipped} skipped).`,
+        });
+      } else {
+        toast.warning("Batch Finished with Issues", {
+          id: toastId,
+          description: `${result.succeeded} succeeded, ${result.failed} failed, ${result.skipped} skipped.`,
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Batch processing failed";
       setErrorMessage(msg);
+      toast.error("Batch Failed", {
+        id: toastId,
+        description: msg,
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -395,10 +417,17 @@ export function BatchConverter() {
           )}
 
           {errorMessage && (
-            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
+            <Alert variant="destructive" className="border-rose-500/30 bg-rose-500/10 text-rose-300">
+              <AlertCircle className="h-4 w-4 text-rose-400" />
+              <div className="space-y-1">
+                <AlertTitle className="text-xs font-semibold text-rose-300">
+                  Batch Processing Failed
+                </AlertTitle>
+                <AlertDescription className="text-xs text-rose-300/90 leading-relaxed">
+                  {errorMessage}
+                </AlertDescription>
+              </div>
+            </Alert>
           )}
         </CardContent>
       </Card>

@@ -11,7 +11,11 @@ import {
   AlertCircle,
   Loader2,
   Palette,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +61,7 @@ export function SingleConverter() {
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [convertResult, setConvertResult] = useState<ConvertResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState<boolean>(false);
   const [outputVideoError, setOutputVideoError] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
@@ -128,7 +133,10 @@ export function SingleConverter() {
 
   const setStartFromCurrent = () => {
     if (videoRef.current) {
-      setStartTime(videoRef.current.currentTime.toFixed(1));
+      const fullDur = videoRef.current.duration || totalVideoDuration;
+      const safeMaxStart = Math.max(0, fullDur - 0.2);
+      const chosenStart = Math.min(videoRef.current.currentTime, safeMaxStart);
+      setStartTime(chosenStart.toFixed(1));
     }
   };
 
@@ -143,8 +151,29 @@ export function SingleConverter() {
   const handleConvert = async () => {
     if (!selectedFile) return;
 
+    const numStart = Number.parseFloat(startTime) || 0;
+
+    if (totalVideoDuration > 0 && numStart >= totalVideoDuration) {
+      const msg = `Start offset (${numStart.toFixed(1)}s) cannot be at or beyond video duration (${totalVideoDuration.toFixed(1)}s).`;
+      setErrorMessage(msg);
+      toast.error("Invalid Start Offset", { description: msg });
+      return;
+    }
+
+    if (totalVideoDuration > 0 && totalVideoDuration - numStart < 0.05) {
+      const msg = `Remaining video duration from offset ${numStart.toFixed(1)}s is too short (< 0.05s). Move playhead back.`;
+      setErrorMessage(msg);
+      toast.error("Clip Too Short", { description: msg });
+      return;
+    }
+
     setIsConverting(true);
     setErrorMessage(null);
+    setShowErrorDetails(false);
+
+    const toastId = toast.loading("Encoding Telegram sticker...", {
+      description: "Converting VP9 stream & optimizing size (≤ 256 KB)",
+    });
 
     try {
       const formData = new FormData();
@@ -168,9 +197,39 @@ export function SingleConverter() {
 
       const result = await convertSingleVideo(formData);
       setConvertResult(result);
+
+      if (result.valid) {
+        toast.success("Sticker Ready!", {
+          id: toastId,
+          description: `${result.filename} is compliant and ready for Telegram.`,
+        });
+      } else {
+        toast.warning("Sticker Converted with Warnings", {
+          id: toastId,
+          description: `Created ${result.filename}, but has ${result.issues.length} compliance warning(s).`,
+        });
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to convert video";
-      setErrorMessage(msg);
+      const rawMsg = err instanceof Error ? err.message : "Failed to convert video";
+      setErrorMessage(rawMsg);
+
+      let friendlySummary = rawMsg;
+      if (
+        rawMsg.includes("ffprobe failed") ||
+        rawMsg.includes("empty or incomplete") ||
+        rawMsg.includes("0 frames")
+      ) {
+        friendlySummary =
+          "No video frames were encoded at the selected start time. Check your start offset and duration.";
+      } else if (rawMsg.includes("cannot be greater than or equal to video duration")) {
+        friendlySummary = "Start offset cannot be past the end of the video.";
+      }
+
+      toast.error("Conversion Failed", {
+        id: toastId,
+        description: friendlySummary,
+        duration: 7000,
+      });
     } finally {
       setIsConverting(false);
     }
@@ -576,10 +635,45 @@ export function SingleConverter() {
             </Button>
 
             {errorMessage && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
+              <Alert variant="destructive" className="border-rose-500/30 bg-rose-500/10 text-rose-300">
+                <AlertCircle className="h-4 w-4 text-rose-400" />
+                <div className="space-y-1 w-full">
+                  <AlertTitle className="text-xs font-semibold text-rose-300">
+                    Conversion Failed
+                  </AlertTitle>
+                  <AlertDescription className="text-xs text-rose-300/90 leading-relaxed">
+                    {errorMessage.includes("ffprobe failed") ||
+                    errorMessage.includes("empty or incomplete") ||
+                    errorMessage.includes("0 frames")
+                      ? "The encoder could not extract video frames at the specified start time and duration. Please verify that your start offset and duration fall completely within the video range."
+                      : errorMessage}
+                  </AlertDescription>
+                  {errorMessage.length > 80 && (
+                    <div className="pt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowErrorDetails(!showErrorDetails)}
+                        className="text-[11px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer underline"
+                      >
+                        {showErrorDetails ? (
+                          <>
+                            <ChevronUp className="h-3 w-3" /> Hide technical details
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-3 w-3" /> Show technical details
+                          </>
+                        )}
+                      </button>
+                      {showErrorDetails && (
+                        <pre className="mt-2 p-2 rounded bg-black/40 border border-rose-500/20 text-[10px] font-mono text-rose-200/80 overflow-x-auto whitespace-pre-wrap max-h-36">
+                          {errorMessage}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Alert>
             )}
           </CardContent>
         </Card>

@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.exceptions import ValidationError
 
 
 @pytest.fixture(scope="session")
@@ -251,3 +252,37 @@ def test_convert_sticker_fit_stretch(sample_landscape_mp4, tmp_path):
     assert res.info.width == 512
     assert res.info.height == 512
     assert res.info.size_bytes <= 256 * 1024
+
+
+def test_convert_start_time_exceeds_duration(sample_landscape_mp4, tmp_path):
+    """Test that setting start_time >= duration raises ValidationError."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "out_bounds.webm"
+
+    cfg = ConversionConfig(mode="sticker", start_time=10.0)
+    with pytest.raises(ValidationError) as exc_info:
+        converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+    assert "cannot be greater than or equal to video duration" in str(exc_info.value)
+
+
+def test_convert_start_time_near_end(sample_landscape_mp4, tmp_path):
+    """Test that setting start_time too close to duration raises ValidationError."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "out_near_end.webm"
+
+    # sample_landscape_mp4 is 4.0s; 3.98s leaves < 0.05s
+    cfg = ConversionConfig(mode="sticker", start_time=3.98)
+    with pytest.raises(ValidationError) as exc_info:
+        converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+    assert "too short" in str(exc_info.value)
+
+
+def test_convert_negative_start_time(sample_landscape_mp4, tmp_path):
+    """Test that negative start_time raises ValidationError."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "out_negative.webm"
+
+    cfg = ConversionConfig(mode="sticker", start_time=-1.0)
+    with pytest.raises(ValidationError) as exc_info:
+        converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+    assert "cannot be negative" in str(exc_info.value)

@@ -11,6 +11,7 @@ from pathlib import Path
 from .exceptions import (
     EncodingError,
     MediaNotFoundError,
+    ValidationError,
 )
 from .optimizer import (
     MAX_TELEGRAM_STICKER_BYTES,
@@ -131,6 +132,21 @@ class TelegramConverter:
 
     def _plan_timing(self, info: MediaInfo, cfg: ConversionConfig) -> TimingPlan:
         start_t = cfg.start_time or 0.0
+        if start_t < 0:
+            raise ValidationError(
+                f"Start time cannot be negative (got: {start_t:.2f}s)"
+            )
+
+        if info.duration > 0:
+            if start_t >= info.duration:
+                raise ValidationError(
+                    f"Start time ({start_t:.2f}s) cannot be greater than or equal to video duration ({info.duration:.2f}s)."
+                )
+            if info.duration - start_t < 0.05:
+                raise ValidationError(
+                    f"Remaining video duration from offset {start_t:.2f}s is too short (< 0.05s) to convert."
+                )
+
         available_dur = (
             max(info.duration - start_t, 0.1) if info.duration > 0 else cfg.max_duration
         )
@@ -140,11 +156,8 @@ class TelegramConverter:
             pts_speed_factor = cfg.max_duration / available_dur
         else:
             pts_speed_factor = 1.0
-            clip_dur = (
-                min(cfg.duration, cfg.max_duration)
-                if cfg.duration
-                else min(available_dur, cfg.max_duration)
-            )
+            requested_dur = cfg.duration or available_dur
+            clip_dur = min(requested_dur, available_dur, cfg.max_duration)
 
         half_dur = (clip_dur / 2.0) if cfg.loop_mode == "pingpong" else clip_dur
         return TimingPlan(
@@ -221,7 +234,9 @@ class TelegramConverter:
             )
         return f"{base_chain},trim=0:{timing.clip_duration:.4f},setpts=PTS-STARTPTS"
 
-    def _execute(self, cmd: list[str], file_name: str, stage_name: str) -> None:
+    def _execute(
+        self, cmd: list[str], file_name: str, stage_name: str
+    ) -> subprocess.CompletedProcess[str]:
         res = subprocess.run(
             cmd,
             capture_output=True,
@@ -237,6 +252,18 @@ class TelegramConverter:
                 returncode=res.returncode,
                 stderr=res.stderr,
             )
+        if stage_name != "FFmpeg 2-pass (pass 1)" and (
+            "Output file is empty, nothing was encoded" in res.stderr
+            or "No filtered frames for output stream" in res.stderr
+        ):
+            raise EncodingError(
+                f"{stage_name} produced an empty video (0 frames) for {file_name}. "
+                "Check that the start time offset and duration fall within the video's range.",
+                cmd=cmd,
+                returncode=res.returncode,
+                stderr=res.stderr,
+            )
+        return res
 
     def _run_encode(
         self,
@@ -328,3 +355,13 @@ class TelegramConverter:
                     ]
                 )
                 self._execute(cmd_pass2, in_p.name, "FFmpeg 2-pass (pass 2)")
+
+        if out_p.exists():
+            out_size = out_p.stat().st_size
+            if out_size < 1024:
+                out_p.unlink(missing_ok=True)
+                raise EncodingError(
+                    f"FFmpeg encoding produced an empty or incomplete video ({out_size} bytes) for {in_p.name}. "
+                    "Please ensure the start time and duration are within the video duration.",
+                    cmd=cmd if not params.two_pass else cmd_pass2,
+                )
