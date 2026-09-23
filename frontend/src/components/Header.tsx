@@ -8,9 +8,14 @@ import { checkApiStatus } from "@/lib/api";
 interface HeaderProps {
   activeTab: "single" | "batch";
   onTabChange: (tab: "single" | "batch") => void;
+  showBatchSelector?: boolean;
 }
 
-export function Header({ activeTab, onTabChange }: HeaderProps) {
+export function Header({
+  activeTab,
+  onTabChange,
+  showBatchSelector = false,
+}: HeaderProps) {
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -73,29 +78,31 @@ export function Header({ activeTab, onTabChange }: HeaderProps) {
             )}
           </div>
 
-          {/* Mode Switcher */}
-          <div className="inline-flex p-1 rounded-lg bg-muted border border-border/50 text-xs font-medium">
-            <button
-              onClick={() => onTabChange("single")}
-              className={`px-3 py-1.5 rounded-md transition-all ${
-                activeTab === "single"
-                  ? "bg-background text-foreground shadow-sm font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Single Video
-            </button>
-            <button
-              onClick={() => onTabChange("batch")}
-              className={`px-3 py-1.5 rounded-md transition-all ${
-                activeTab === "batch"
-                  ? "bg-background text-foreground shadow-sm font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Folder Batch
-            </button>
-          </div>
+          {/* Mode Switcher (hidden for now) */}
+          {showBatchSelector && (
+            <div className="inline-flex p-1 rounded-lg bg-muted border border-border/50 text-xs font-medium">
+              <button
+                onClick={() => onTabChange("single")}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === "single"
+                    ? "bg-background text-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Single Video
+              </button>
+              <button
+                onClick={() => onTabChange("batch")}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === "batch"
+                    ? "bg-background text-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Folder Batch
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

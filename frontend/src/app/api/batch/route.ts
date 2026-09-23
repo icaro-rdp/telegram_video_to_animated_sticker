@@ -32,6 +32,10 @@ export async function POST(request: NextRequest) {
       args.push("--fit", payload.fit_mode);
     }
 
+    if (payload.crop && typeof payload.crop === "string" && payload.crop.trim()) {
+      args.push("--crop", payload.crop.trim());
+    }
+
     if (payload.fps && !Number.isNaN(Number(payload.fps))) {
       args.push("--fps", String(payload.fps));
     }

@@ -50,6 +50,11 @@ def run(
         help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
     )
     parser.add_argument(
+        "--crop",
+        default=None,
+        help="Custom crop boundaries as 'x,y,w,h' (in pixels or 0.0-1.0 fractions) e.g. '100,50,400,400'",
+    )
+    parser.add_argument(
         "-ss",
         "--start",
         type=float,
@@ -141,6 +146,7 @@ def run(
         speed_to_fit=args.speed_to_fit,
         loop_mode="pingpong" if args.pingpong else "normal",
         fit_mode=args.fit,
+        crop=getattr(args, "crop", None),
         fps=args.fps,
         crf=args.crf,
         remove_bg=args.remove_bg,

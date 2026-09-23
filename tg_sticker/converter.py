@@ -39,6 +39,9 @@ class ConversionConfig:
     fit_mode: str | None = (
         None  # "contain", "crop", "pad", or "stretch" (default: "contain" for sticker, "crop" for emoji)
     )
+    crop: str | tuple[int, int, int, int] | None = (
+        None  # Custom boundary crop: (x, y, w, h) or "x,y,w,h"
+    )
     fps: int = 30  # Max 30 FPS
     crf: int = 30  # Base VP9 CRF quality (0-63)
     remove_bg: str | None = (
@@ -46,6 +49,113 @@ class ConversionConfig:
     )
     max_duration: float = 3.0  # Telegram hard max limit is 3.0s
     preserve_alpha: bool = True  # Preserve transparent alpha channels if present
+
+
+def parse_crop_box(
+    crop_input: str
+    | tuple[int | float, int | float, int | float, int | float]
+    | list[int | float]
+    | None,
+    video_width: int | None = None,
+    video_height: int | None = None,
+) -> tuple[int, int, int, int] | None:
+    """Parses and validates crop boundaries into (x, y, w, h) in pixels.
+
+    Args:
+        crop_input: Crop box as 'x,y,w,h' or 'x:y:w:h' string or 4-element numeric tuple/list.
+            Values can be integer pixel values or normalized floats (0.0 to 1.0).
+        video_width: Source video width in pixels, if known.
+        video_height: Source video height in pixels, if known.
+
+    Returns:
+        Validated (x, y, w, h) tuple with even dimensions, or None if crop_input is None.
+
+    Raises:
+        ValidationError: If format is invalid or bounds are outside the video.
+    """
+    if crop_input is None:
+        return None
+
+    if isinstance(crop_input, str):
+        crop_str = crop_input.strip()
+        if not crop_str:
+            return None
+        delimiter = "," if "," in crop_str else ":"
+        parts = [p.strip() for p in crop_str.split(delimiter)]
+        if len(parts) != 4:
+            raise ValidationError(
+                f"Invalid crop format '{crop_input}'. Expected 4 values: 'x,y,w,h' or 'x:y:w:h'."
+            )
+        try:
+            raw_vals = [float(p) for p in parts]
+        except ValueError as e:
+            raise ValidationError(
+                f"Invalid crop numbers in '{crop_input}': all 4 values must be numeric."
+            ) from e
+    elif isinstance(crop_input, (tuple, list)):
+        if len(crop_input) != 4:
+            raise ValidationError(
+                f"Crop coordinates must have exactly 4 elements (x, y, w, h), got {len(crop_input)}."
+            )
+        try:
+            raw_vals = [float(v) for v in crop_input]
+        except (ValueError, TypeError) as e:
+            raise ValidationError(
+                "Invalid crop numbers in tuple: all 4 values must be numeric."
+            ) from e
+    else:
+        raise ValidationError(
+            f"Unsupported crop input type: {type(crop_input).__name__}. Expected str or 4-tuple."
+        )
+
+    is_normalized = all(0.0 <= v <= 1.0 for v in raw_vals) and any(
+        0.0 < v < 1.0 for v in raw_vals
+    )
+
+    if is_normalized:
+        if not video_width or not video_height:
+            raise ValidationError(
+                "Normalized crop coordinates (0.0-1.0) require video dimensions to resolve."
+            )
+        x = round(raw_vals[0] * video_width)
+        y = round(raw_vals[1] * video_height)
+        w = round(raw_vals[2] * video_width)
+        h = round(raw_vals[3] * video_height)
+    else:
+        x = round(raw_vals[0])
+        y = round(raw_vals[1])
+        w = round(raw_vals[2])
+        h = round(raw_vals[3])
+
+    if w <= 0 or h <= 0:
+        raise ValidationError(f"Crop width ({w}) and height ({h}) must be positive.")
+    if x < 0 or y < 0:
+        raise ValidationError(f"Crop x ({x}) and y ({y}) cannot be negative.")
+
+    if video_width and video_height:
+        if x >= video_width or y >= video_height:
+            raise ValidationError(
+                f"Crop position ({x}, {y}) starts outside the video dimensions ({video_width}x{video_height})."
+            )
+        if x + w > video_width:
+            w = video_width - x
+        if y + h > video_height:
+            h = video_height - y
+
+    # Ensure w and h are even for YUV420p video codecs
+    if w % 2 != 0:
+        w -= 1
+    if h % 2 != 0:
+        h -= 1
+    if x % 2 != 0 and x > 0:
+        x -= 1
+    if y % 2 != 0 and y > 0:
+        y -= 1
+
+    w = max(2, w)
+    h = max(2, h)
+
+    return (x, y, w, h)
 
 
 @dataclass
@@ -94,7 +204,10 @@ class TelegramConverter:
             crf=cfg.crf, bitrate_kbps=0, two_pass=False, fps=min(cfg.fps, 30)
         )
 
-        vfilters = self._build_video_filters(cfg, timing, initial_params.fps)
+        crop_box = parse_crop_box(cfg.crop, info.width, info.height)
+        vfilters = self._build_video_filters(
+            cfg, timing, initial_params.fps, crop_box=crop_box
+        )
         self._run_encode(
             in_p,
             out_p,
@@ -115,7 +228,9 @@ class TelegramConverter:
                 attempt=attempt,
                 current_fps=initial_params.fps,
             )
-            curr_filters = self._build_video_filters(cfg, timing, reencode_params.fps)
+            curr_filters = self._build_video_filters(
+                cfg, timing, reencode_params.fps, crop_box=crop_box
+            )
             self._run_encode(
                 in_p,
                 out_p,
@@ -178,7 +293,11 @@ class TelegramConverter:
         return args
 
     def _build_video_filters(
-        self, cfg: ConversionConfig, timing: TimingPlan, target_fps: int
+        self,
+        cfg: ConversionConfig,
+        timing: TimingPlan,
+        target_fps: int,
+        crop_box: tuple[int, int, int, int] | None = None,
     ) -> str:
         filters: list[str] = []
 
@@ -198,30 +317,54 @@ class TelegramConverter:
 
         effective_fit = cfg.fit_mode or ("crop" if cfg.mode == "emoji" else "contain")
 
-        if cfg.mode == "emoji":
-            if effective_fit in ("pad", "contain"):
-                filters.append(
-                    "scale='if(gte(iw,ih),100,-2)':'if(gte(iw,ih),-2,100)',"
-                    "pad=100:100:(100-iw)/2:(100-ih)/2:color=0x00000000"
-                )
-            elif effective_fit == "stretch":
-                filters.append("scale=100:100")
-            else:  # crop
-                filters.append("crop=min(iw\\,ih):min(iw\\,ih),scale=100:100")
+        if crop_box is not None:
+            cx, cy, cw, ch = crop_box
+            crop_filter = f"crop={cw}:{ch}:{cx}:{cy}"
+            if cfg.mode == "emoji":
+                filters.append(f"{crop_filter},scale=100:100")
+            else:
+                # Sticker mode
+                if effective_fit == "stretch":
+                    filters.append(f"{crop_filter},scale=512:512")
+                elif effective_fit == "pad":
+                    filters.append(
+                        f"{crop_filter},"
+                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)',"
+                        "pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000"
+                    )
+                else:
+                    # contain or default or crop: scale to max 512px on longer edge
+                    filters.append(
+                        f"{crop_filter},"
+                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)'"
+                    )
         else:
-            # Sticker mode
-            if effective_fit == "crop":
-                filters.append("crop=min(iw\\,ih):min(iw\\,ih),scale=512:512")
-            elif effective_fit == "pad":
-                filters.append(
-                    "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)',"
-                    "pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000"
-                )
-            elif effective_fit == "stretch":
-                filters.append("scale=512:512")
-            else:  # contain (default)
-                # exactly 512px on longer side, <= 512px on other, even dimensions
-                filters.append("scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)'")
+            if cfg.mode == "emoji":
+                if effective_fit in ("pad", "contain"):
+                    filters.append(
+                        "scale='if(gte(iw,ih),100,-2)':'if(gte(iw,ih),-2,100)',"
+                        "pad=100:100:(100-iw)/2:(100-ih)/2:color=0x00000000"
+                    )
+                elif effective_fit == "stretch":
+                    filters.append("scale=100:100")
+                else:  # crop
+                    filters.append("crop=min(iw\\,ih):min(iw\\,ih),scale=100:100")
+            else:
+                # Sticker mode
+                if effective_fit == "crop":
+                    filters.append("crop=min(iw\\,ih):min(iw\\,ih),scale=512:512")
+                elif effective_fit == "pad":
+                    filters.append(
+                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)',"
+                        "pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000"
+                    )
+                elif effective_fit == "stretch":
+                    filters.append("scale=512:512")
+                else:  # contain (default)
+                    # exactly 512px on longer side, <= 512px on other, even dimensions
+                    filters.append(
+                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)'"
+                    )
 
         filters.append(f"fps={min(target_fps, 30)}")
         base_chain = ",".join(filters)

@@ -38,6 +38,7 @@ export interface BatchPayload {
   speed_to_fit: boolean;
   loop_mode: string;
   fit_mode?: string;
+  crop?: string;
   fps: number;
   crf: number;
   remove_bg?: string;

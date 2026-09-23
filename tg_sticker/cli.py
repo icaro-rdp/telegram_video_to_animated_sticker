@@ -62,6 +62,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         speed_to_fit=args.speed_to_fit,
         loop_mode="pingpong" if getattr(args, "pingpong", False) else "normal",
         fit_mode=args.fit,
+        crop=getattr(args, "crop", None),
         fps=args.fps,
         crf=args.crf,
         remove_bg=args.remove_bg,
@@ -236,6 +237,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
         speed_to_fit=args.speed_to_fit,
         loop_mode="pingpong" if args.pingpong else "normal",
         fit_mode=args.fit,
+        crop=getattr(args, "crop", None),
         fps=args.fps,
         crf=args.crf,
         remove_bg=args.remove_bg,
@@ -530,6 +532,11 @@ def main():
         help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
     )
     p_conv.add_argument(
+        "--crop",
+        default=None,
+        help="Custom crop boundaries as 'x,y,w,h' (in pixels or 0.0-1.0 fractions) e.g. '100,50,400,400'",
+    )
+    p_conv.add_argument(
         "--fps", type=int, default=30, help="Target FPS (default 30, max 30)"
     )
     p_conv.add_argument(
@@ -585,6 +592,11 @@ def main():
         choices=["contain", "crop", "pad", "stretch"],
         default=None,
         help="Fit method: contain (preserve aspect ratio, default for sticker), crop (square 1:1, default for emoji), pad, or stretch",
+    )
+    p_batch.add_argument(
+        "--crop",
+        default=None,
+        help="Custom crop boundaries as 'x,y,w,h' (in pixels or 0.0-1.0 fractions) e.g. '100,50,400,400'",
     )
     p_batch.add_argument("--fps", type=int, default=30, help="Target FPS (max 30)")
     p_batch.add_argument("--crf", type=int, default=30, help="Base VP9 CRF")

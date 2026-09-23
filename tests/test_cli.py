@@ -107,3 +107,30 @@ def test_cli_convert_missing_file_json(tmp_path: Path) -> None:
     data = json.loads(proc.stdout.strip())
     assert data["success"] is False
     assert data["error_type"] == "MediaNotFoundError"
+
+
+def test_cli_convert_crop_json(sample_video: Path, tmp_path: Path) -> None:
+    """Test convert with custom --crop flag produces valid sticker with proper dimensions."""
+    out_file = tmp_path / "cli_crop_out.webm"
+    cmd = [
+        sys.executable,
+        "-m",
+        "tg_sticker.cli",
+        "convert",
+        str(sample_video),
+        "-o",
+        str(out_file),
+        "--crop",
+        "20,20,100,100",
+        "--fps",
+        "15",
+        "--duration",
+        "0.5",
+        "--json",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    data = json.loads(proc.stdout.strip())
+    assert data["success"] is True
+    assert data["valid"] is True
+    assert data["info"]["width"] == 512
+    assert data["info"]["height"] == 512

@@ -4,7 +4,11 @@ import subprocess
 
 import pytest
 
-from tg_sticker.converter import ConversionConfig, TelegramConverter
+from tg_sticker.converter import (
+    ConversionConfig,
+    TelegramConverter,
+    parse_crop_box,
+)
 from tg_sticker.exceptions import ValidationError
 
 
@@ -286,3 +290,81 @@ def test_convert_negative_start_time(sample_landscape_mp4, tmp_path):
     with pytest.raises(ValidationError) as exc_info:
         converter.convert(sample_landscape_mp4, out_webm, config=cfg)
     assert "cannot be negative" in str(exc_info.value)
+
+
+def test_parse_crop_box_pixels():
+    """Test parsing pixel crop coordinates as string and tuple."""
+    assert parse_crop_box("100,50,400,300", 1920, 1080) == (100, 50, 400, 300)
+    assert parse_crop_box("100:50:400:300", 1920, 1080) == (100, 50, 400, 300)
+    assert parse_crop_box((100, 50, 400, 300), 1920, 1080) == (100, 50, 400, 300)
+    # Ensure odd dimensions are made even
+    assert parse_crop_box("101,51,401,301", 1920, 1080) == (100, 50, 400, 300)
+
+
+def test_parse_crop_box_normalized():
+    """Test parsing normalized 0.0-1.0 crop coordinates."""
+    # 0.1 * 1000 = 100, 0.5 * 1000 = 500
+    res = parse_crop_box("0.1,0.2,0.5,0.4", 1000, 800)
+    assert res == (100, 160, 500, 320)
+
+
+def test_parse_crop_box_errors():
+    """Test that invalid crop inputs raise ValidationError."""
+    with pytest.raises(ValidationError, match="Expected 4 values"):
+        parse_crop_box("100,200", 1920, 1080)
+
+    with pytest.raises(ValidationError, match="all 4 values must be numeric"):
+        parse_crop_box("abc,200,300,400", 1920, 1080)
+
+    with pytest.raises(ValidationError, match="cannot be negative"):
+        parse_crop_box("-10,50,200,200", 1920, 1080)
+
+    with pytest.raises(ValidationError, match="must be positive"):
+        parse_crop_box("0,0,0,200", 1920, 1080)
+
+    with pytest.raises(ValidationError, match="outside the video dimensions"):
+        parse_crop_box("2000,50,200,200", 1920, 1080)
+
+
+def test_convert_custom_crop_sticker(sample_landscape_mp4, tmp_path):
+    """Test converting with an off-center square custom crop produces a valid 512x512 sticker."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "custom_cropped_sticker.webm"
+
+    # Off-center crop near top-right: x=900, y=100, w=600, h=600
+    cfg = ConversionConfig(mode="sticker", crop="900,100,600,600", duration=1.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 512
+    assert res.info.height == 512
+    assert res.info.size_bytes <= 256 * 1024
+
+
+def test_convert_custom_crop_rectangular(sample_landscape_mp4, tmp_path):
+    """Test converting with a non-square custom crop (2:1 aspect ratio) scales correctly."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "custom_cropped_rect.webm"
+
+    # 2:1 rectangle: w=800, h=400 -> should scale to 512x256
+    cfg = ConversionConfig(mode="sticker", crop="100,100,800,400", duration=1.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 512
+    assert res.info.height == 256
+    assert res.info.size_bytes <= 256 * 1024
+
+
+def test_convert_custom_crop_emoji(sample_landscape_mp4, tmp_path):
+    """Test custom crop in emoji mode produces exactly 100x100."""
+    converter = TelegramConverter()
+    out_webm = tmp_path / "custom_cropped_emoji.webm"
+
+    cfg = ConversionConfig(mode="emoji", crop="200,200,400,400", duration=1.0)
+    res = converter.convert(sample_landscape_mp4, out_webm, config=cfg)
+
+    assert res.valid is True, res.issues
+    assert res.info.width == 100
+    assert res.info.height == 100
+    assert res.info.size_bytes <= 256 * 1024

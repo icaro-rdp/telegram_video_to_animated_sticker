@@ -62,6 +62,11 @@ export async function POST(request: NextRequest) {
       args.push("--fit", fitMode);
     }
 
+    const crop = formData.get("crop") as string | null;
+    if (crop && crop.trim()) {
+      args.push("--crop", crop.trim());
+    }
+
     const fps = formData.get("fps") as string | null;
     if (fps && !Number.isNaN(Number(fps))) {
       args.push("--fps", fps);

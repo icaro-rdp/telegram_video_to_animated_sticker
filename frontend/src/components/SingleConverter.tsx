@@ -13,6 +13,7 @@ import {
   Palette,
   ChevronDown,
   ChevronUp,
+  Crop,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -33,6 +34,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ComplianceChecklist } from "@/components/ComplianceChecklist";
 import { VideoTrimmer } from "@/components/VideoTrimmer";
+import { VideoCropOverlay, CropBox, AspectRatioMode } from "@/components/VideoCropOverlay";
 import { convertSingleVideo, ConvertResponse } from "@/lib/api";
 
 export function SingleConverter() {
@@ -56,6 +58,12 @@ export function SingleConverter() {
   const [removeBg, setRemoveBg] = useState<string>("none");
   const [customColor, setCustomColor] = useState<string>("#00FF00");
   const [preserveAlpha, setPreserveAlpha] = useState<boolean>(true);
+
+  // Custom Crop state
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [cropBox, setCropBox] = useState<CropBox | null>(null);
+  const [isCropActive, setIsCropActive] = useState<boolean>(false);
+  const [cropAspectRatio, setCropAspectRatio] = useState<AspectRatioMode>("1:1");
 
   // Result & Loading states
   const [isConverting, setIsConverting] = useState<boolean>(false);
@@ -116,6 +124,9 @@ export function SingleConverter() {
     setTotalVideoDuration(0);
     setStartTime("0.0");
     setDuration("3.0");
+    setVideoDimensions(null);
+    setCropBox(null);
+    setIsCropActive(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -128,6 +139,17 @@ export function SingleConverter() {
       setStartTime("0.0");
       const initialDur = Math.min(fullDur, 3.0);
       setDuration(initialDur.toFixed(1));
+
+      const vw = videoRef.current.videoWidth || 512;
+      const vh = videoRef.current.videoHeight || 512;
+      setVideoDimensions({ width: vw, height: vh });
+      const side = Math.min(vw, vh);
+      setCropBox({
+        x: Math.round((vw - side) / 2),
+        y: Math.round((vh - side) / 2),
+        width: side,
+        height: side,
+      });
     }
   };
 
@@ -184,7 +206,15 @@ export function SingleConverter() {
       if (startTime) formData.append("start_time", startTime);
       if (duration) formData.append("duration", duration);
       formData.append("speed_to_fit", String(speedToFit));
-      if (fitMode && fitMode !== "default") formData.append("fit_mode", fitMode);
+      if (fitMode && fitMode !== "default" && fitMode !== "custom_crop") {
+        formData.append("fit_mode", fitMode);
+      }
+      if ((isCropActive || fitMode === "custom_crop") && cropBox) {
+        formData.append(
+          "crop",
+          `${Math.round(cropBox.x)},${Math.round(cropBox.y)},${Math.round(cropBox.width)},${Math.round(cropBox.height)}`
+        );
+      }
       formData.append("fps", String(fps[0]));
       formData.append("crf", String(crf[0]));
       formData.append("preserve_alpha", String(preserveAlpha));
@@ -315,14 +345,75 @@ export function SingleConverter() {
                 {/* Video Scrubber & QuickTime Trimmer Preview */}
                 {videoPreviewUrl && (
                   <div className="rounded-xl overflow-hidden border border-border/60 bg-black/40 space-y-3.5 p-3.5">
-                    <video
-                      ref={videoRef}
-                      src={videoPreviewUrl}
-                      controls
-                      playsInline
-                      onLoadedMetadata={handleVideoLoadedMetadata}
-                      className="w-full max-h-56 rounded-lg mx-auto object-contain bg-black shadow-sm"
-                    />
+                    {/* Header Bar: Video info & Crop toggle */}
+                    <div className="flex items-center justify-between pb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Film className="h-3.5 w-3.5 text-sky-400" /> Video Canvas
+                        </span>
+                        {videoDimensions && (
+                          <Badge variant="secondary" className="font-mono text-[10px]">
+                            {videoDimensions.width}×{videoDimensions.height}
+                          </Badge>
+                        )}
+                        {isCropActive && (
+                          <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
+                            Custom Crop Active
+                          </Badge>
+                        )}
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant={isCropActive ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          const next = !isCropActive;
+                          setIsCropActive(next);
+                          if (next && fitMode !== "custom_crop") {
+                            setFitMode("custom_crop");
+                          } else if (!next && fitMode === "custom_crop") {
+                            setFitMode("default");
+                          }
+                        }}
+                        className={`h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer transition-all ${
+                          isCropActive
+                            ? "bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Crop className="h-3.5 w-3.5" />
+                        {isCropActive ? "Close Crop Tool" : "Crop Boundaries"}
+                      </Button>
+                    </div>
+
+                    {isCropActive && videoDimensions && cropBox ? (
+                      <VideoCropOverlay
+                        videoWidth={videoDimensions.width}
+                        videoHeight={videoDimensions.height}
+                        cropBox={cropBox}
+                        onChange={setCropBox}
+                        aspectRatio={cropAspectRatio}
+                        onAspectRatioChange={setCropAspectRatio}
+                      >
+                        <video
+                          ref={videoRef}
+                          src={videoPreviewUrl}
+                          playsInline
+                          onLoadedMetadata={handleVideoLoadedMetadata}
+                          className="w-auto max-h-64 max-w-full rounded-lg object-contain bg-black shadow-sm block mx-auto"
+                        />
+                      </VideoCropOverlay>
+                    ) : (
+                      <video
+                        ref={videoRef}
+                        src={videoPreviewUrl}
+                        controls
+                        playsInline
+                        onLoadedMetadata={handleVideoLoadedMetadata}
+                        className="w-full max-h-56 rounded-lg mx-auto object-contain bg-black shadow-sm"
+                      />
+                    )}
 
                     {/* QuickTime-Style Video Trimmer */}
                     {totalVideoDuration > 0 && (
@@ -496,14 +587,36 @@ export function SingleConverter() {
 
             {/* Fit Mode */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Aspect Ratio / Fit Mode</Label>
-              <Select value={fitMode} onValueChange={(val) => { if (val) setFitMode(val); }}>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Aspect Ratio / Fit Mode</Label>
+                {isCropActive && (
+                  <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
+                    Custom Crop Active
+                  </Badge>
+                )}
+              </div>
+              <Select
+                value={fitMode}
+                onValueChange={(val) => {
+                  if (val) {
+                    setFitMode(val);
+                    if (val === "custom_crop") {
+                      setIsCropActive(true);
+                    } else if (isCropActive) {
+                      setIsCropActive(false);
+                    }
+                  }
+                }}
+              >
                 <SelectTrigger className="w-full h-9 text-xs">
                   <SelectValue placeholder="Select fit mode" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">
                     Default (Keep Aspect Ratio for Stickers, Square Crop for Emoji)
+                  </SelectItem>
+                  <SelectItem value="custom_crop">
+                    Custom Boundary Crop (Interactive Subject Selector)
                   </SelectItem>
                   <SelectItem value="crop">Center Crop (Square 1:1)</SelectItem>
                   <SelectItem value="pad">Pad (Transparent border to Square)</SelectItem>
