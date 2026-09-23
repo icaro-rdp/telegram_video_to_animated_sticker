@@ -170,7 +170,17 @@ def probe_media(file_path: str | Path) -> MediaInfo:
     size_bytes = int(format_data.get("size") or os.path.getsize(file_path_str))
     duration = float(format_data.get("duration") or 0.0)
 
-    video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+    video_streams = [s for s in streams if s.get("codec_type") == "video"]
+    video_stream = None
+    if video_streams:
+        video_stream = next(
+            (
+                s
+                for s in video_streams
+                if float(s.get("duration") or 0) > 0 or int(s.get("nb_frames") or 0) > 1
+            ),
+            video_streams[0],
+        )
     has_audio = any(s.get("codec_type") == "audio" for s in streams)
 
     video_codec = None
