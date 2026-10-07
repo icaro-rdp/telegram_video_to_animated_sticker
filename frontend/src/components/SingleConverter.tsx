@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, ChangeEvent, DragEvent } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useSyncExternalStore,
+  ChangeEvent,
+  DragEvent,
+} from "react";
 import {
   UploadCloud,
   Film,
@@ -14,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Crop,
+  Pipette,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -44,6 +52,9 @@ export function SingleConverter() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const outputVideoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoSectionRef = useRef<HTMLDivElement>(null);
+  const chromaSectionRef = useRef<HTMLDivElement>(null);
+  const samplingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Conversion parameters
   const [mode, setMode] = useState<"sticker" | "emoji">("sticker");
@@ -59,6 +70,16 @@ export function SingleConverter() {
   const [customColor, setCustomColor] = useState<string>("#00FF00");
   const [preserveAlpha, setPreserveAlpha] = useState<boolean>(true);
 
+  // Chroma Video Eyedropper state
+  const [isPickingColor, setIsPickingColor] = useState<boolean>(false);
+  const [hoverColor, setHoverColor] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const hasNativeEyeDropper = useSyncExternalStore(
+    () => () => {},
+    () => typeof window !== "undefined" && "EyeDropper" in window,
+    () => false
+  );
+
   // Custom Crop state
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [cropBox, setCropBox] = useState<CropBox | null>(null);
@@ -72,6 +93,17 @@ export function SingleConverter() {
   const [showErrorDetails, setShowErrorDetails] = useState<boolean>(false);
   const [outputVideoError, setOutputVideoError] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isPickingColor) {
+        setIsPickingColor(false);
+        setHoverColor(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPickingColor]);
 
   useEffect(() => {
     if (outputVideoRef.current && convertResult?.download_url) {
@@ -127,6 +159,9 @@ export function SingleConverter() {
     setVideoDimensions(null);
     setCropBox(null);
     setIsCropActive(false);
+    setIsPickingColor(false);
+    setHoverColor(null);
+    setCursorPos(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -160,6 +195,150 @@ export function SingleConverter() {
       const chosenStart = Math.min(videoRef.current.currentTime, safeMaxStart);
       setStartTime(chosenStart.toFixed(1));
     }
+  };
+
+  const getVideoRenderRect = (video: HTMLVideoElement) => {
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    const rect = video.getBoundingClientRect();
+
+    if (!videoWidth || !videoHeight || !rect.width || !rect.height) {
+      return null;
+    }
+
+    const videoAspect = videoWidth / videoHeight;
+    const containerAspect = rect.width / rect.height;
+
+    let renderWidth = rect.width;
+    let renderHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoAspect > containerAspect) {
+      renderHeight = rect.width / videoAspect;
+      offsetY = (rect.height - renderHeight) / 2;
+    } else {
+      renderWidth = rect.height * videoAspect;
+      offsetX = (rect.width - renderWidth) / 2;
+    }
+
+    return {
+      rect,
+      renderWidth,
+      renderHeight,
+      offsetX,
+      offsetY,
+      videoWidth,
+      videoHeight,
+    };
+  };
+
+  const sampleColorAtPoint = (clientX: number, clientY: number): string | null => {
+    const video = videoRef.current;
+    if (!video) return null;
+
+    const info = getVideoRenderRect(video);
+    if (!info) return null;
+
+    const clickX = clientX - info.rect.left;
+    const clickY = clientY - info.rect.top;
+
+    if (
+      clickX < info.offsetX ||
+      clickX > info.offsetX + info.renderWidth ||
+      clickY < info.offsetY ||
+      clickY > info.offsetY + info.renderHeight
+    ) {
+      return null;
+    }
+
+    const normX = (clickX - info.offsetX) / info.renderWidth;
+    const normY = (clickY - info.offsetY) / info.renderHeight;
+
+    const pixelX = Math.max(0, Math.min(info.videoWidth - 1, Math.floor(normX * info.videoWidth)));
+    const pixelY = Math.max(0, Math.min(info.videoHeight - 1, Math.floor(normY * info.videoHeight)));
+
+    if (!samplingCanvasRef.current) {
+      samplingCanvasRef.current = document.createElement("canvas");
+    }
+    const canvas = samplingCanvasRef.current;
+    if (canvas.width !== info.videoWidth || canvas.height !== info.videoHeight) {
+      canvas.width = info.videoWidth;
+      canvas.height = info.videoHeight;
+    }
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    try {
+      ctx.drawImage(video, 0, 0, info.videoWidth, info.videoHeight);
+      const pixel = ctx.getImageData(pixelX, pixelY, 1, 1).data;
+      const r = pixel[0].toString(16).padStart(2, "0").toUpperCase();
+      const g = pixel[1].toString(16).padStart(2, "0").toUpperCase();
+      const b = pixel[2].toString(16).padStart(2, "0").toUpperCase();
+      return `#${r}${g}${b}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const startColorPicking = () => {
+    if (!selectedFile || !videoRef.current) {
+      toast.error("Please upload a video first to sample colors.");
+      return;
+    }
+    if (!videoRef.current.paused) {
+      videoRef.current.pause();
+    }
+    setIsCropActive(false);
+    setIsPickingColor(true);
+    videoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleNativeEyeDropper = async () => {
+    if (typeof window === "undefined" || !("EyeDropper" in window)) return;
+    try {
+      // @ts-expect-error - EyeDropper is experimental
+      const eyeDropper = new window.EyeDropper();
+      const result = await eyeDropper.open();
+      if (result?.sRGBHex) {
+        const hex = result.sRGBHex.toUpperCase();
+        setCustomColor(hex);
+        setRemoveBg("custom");
+        setIsPickingColor(false);
+        setHoverColor(null);
+        toast.success(`Chroma Key color set to ${hex}`);
+        chromaSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    } catch {
+      // User canceled
+    }
+  };
+
+  const handleVideoColorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const color = sampleColorAtPoint(e.clientX, e.clientY);
+    if (color) {
+      setCustomColor(color);
+      setRemoveBg("custom");
+      setIsPickingColor(false);
+      setHoverColor(null);
+      toast.success(`Chroma Key color set to ${color}`, {
+        description: "Background removal will target this sampled color.",
+      });
+      chromaSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      toast.info("Please click directly on the video content, not the black margin.");
+    }
+  };
+
+  const handleVideoColorMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const color = sampleColorAtPoint(e.clientX, e.clientY);
+    setHoverColor(color);
+    const containerRect = e.currentTarget.getBoundingClientRect();
+    setCursorPos({
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top,
+    });
   };
 
   const getCrfDescription = (val: number) => {
@@ -344,7 +523,10 @@ export function SingleConverter() {
 
                 {/* Video Scrubber & QuickTime Trimmer Preview */}
                 {videoPreviewUrl && (
-                  <div className="rounded-xl overflow-hidden border border-border/60 bg-black/40 space-y-3.5 p-3.5">
+                  <div
+                    ref={videoSectionRef}
+                    className="rounded-xl overflow-hidden border border-border/60 bg-black/40 space-y-3.5 p-3.5 scroll-mt-24"
+                  >
                     {/* Header Bar: Video info & Crop toggle */}
                     <div className="flex items-center justify-between pb-1">
                       <div className="flex items-center gap-2">
@@ -363,28 +545,79 @@ export function SingleConverter() {
                         )}
                       </div>
 
-                      <Button
-                        type="button"
-                        variant={isCropActive ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          const next = !isCropActive;
-                          setIsCropActive(next);
-                          if (next && fitMode !== "custom_crop") {
-                            setFitMode("custom_crop");
-                          } else if (!next && fitMode === "custom_crop") {
-                            setFitMode("default");
-                          }
-                        }}
-                        className={`h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer transition-all ${
-                          isCropActive
-                            ? "bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Crop className="h-3.5 w-3.5" />
-                        {isCropActive ? "Close Crop Tool" : "Crop Boundaries"}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {removeBg !== "none" && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] gap-1.5 items-center border-sky-500/30 text-sky-300"
+                          >
+                            <span
+                              className="inline-block w-2 h-2 rounded-full border border-white/40 shrink-0"
+                              style={{
+                                backgroundColor:
+                                  removeBg === "green"
+                                    ? "#00FF00"
+                                    : removeBg === "black"
+                                    ? "#000000"
+                                    : removeBg === "white"
+                                    ? "#FFFFFF"
+                                    : customColor,
+                              }}
+                            />
+                            Chroma: {removeBg === "custom" ? customColor : removeBg}
+                          </Badge>
+                        )}
+
+                        <Button
+                          type="button"
+                          variant={isPickingColor ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            if (isPickingColor) {
+                              setIsPickingColor(false);
+                              setHoverColor(null);
+                            } else {
+                              startColorPicking();
+                            }
+                          }}
+                          className={`h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer transition-all ${
+                            isPickingColor
+                              ? "bg-sky-500 hover:bg-sky-600 text-white font-semibold shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Sample background color directly from video frame"
+                        >
+                          <Pipette className="h-3.5 w-3.5 text-sky-400" />
+                          {isPickingColor ? "Sampling..." : "Pick Chroma"}
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant={isCropActive ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            if (isPickingColor) {
+                              setIsPickingColor(false);
+                              setHoverColor(null);
+                            }
+                            const next = !isCropActive;
+                            setIsCropActive(next);
+                            if (next && fitMode !== "custom_crop") {
+                              setFitMode("custom_crop");
+                            } else if (!next && fitMode === "custom_crop") {
+                              setFitMode("default");
+                            }
+                          }}
+                          className={`h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer transition-all ${
+                            isCropActive
+                              ? "bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Crop className="h-3.5 w-3.5" />
+                          {isCropActive ? "Close Crop Tool" : "Crop Boundaries"}
+                        </Button>
+                      </div>
                     </div>
 
                     {isCropActive && videoDimensions && cropBox ? (
@@ -405,14 +638,80 @@ export function SingleConverter() {
                         />
                       </VideoCropOverlay>
                     ) : (
-                      <video
-                        ref={videoRef}
-                        src={videoPreviewUrl}
-                        controls
-                        playsInline
-                        onLoadedMetadata={handleVideoLoadedMetadata}
-                        className="w-full max-h-56 rounded-lg mx-auto object-contain bg-black shadow-sm"
-                      />
+                      <div className="relative rounded-lg overflow-hidden bg-black flex items-center justify-center">
+                        <video
+                          ref={videoRef}
+                          src={videoPreviewUrl}
+                          controls={!isPickingColor}
+                          playsInline
+                          onLoadedMetadata={handleVideoLoadedMetadata}
+                          className="w-full max-h-56 rounded-lg mx-auto object-contain bg-black shadow-sm"
+                        />
+
+                        {/* Interactive In-Video Color Picker Overlay */}
+                        {isPickingColor && (
+                          <>
+                            {/* Top Instruction Banner */}
+                            <div className="absolute top-2 left-2 right-2 z-30 flex items-center justify-between px-3 py-1.5 bg-black/85 backdrop-blur-md rounded-lg border border-sky-500/40 shadow-xl text-xs text-white">
+                              <div className="flex items-center gap-2">
+                                <Pipette className="h-4 w-4 text-sky-400 animate-pulse" />
+                                <span className="font-medium text-sky-200 text-[11px] sm:text-xs">
+                                  Click any point on the video to sample the chroma key color
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {hasNativeEyeDropper && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleNativeEyeDropper}
+                                    className="h-6 px-2 text-[10px] border-sky-400/40 text-sky-300 hover:bg-sky-400/20"
+                                  >
+                                    System Eyedropper
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setIsPickingColor(false);
+                                    setHoverColor(null);
+                                  }}
+                                  className="h-6 px-2 text-[10px] text-zinc-400 hover:text-white"
+                                >
+                                  Cancel (Esc)
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Click & Hover Target */}
+                            <div
+                              onClick={handleVideoColorClick}
+                              onMouseMove={handleVideoColorMouseMove}
+                              onMouseLeave={() => setHoverColor(null)}
+                              className="absolute inset-0 z-20 cursor-crosshair"
+                            />
+
+                            {/* Floating Loupe / Swatch Tooltip */}
+                            {hoverColor && cursorPos && (
+                              <div
+                                className={`pointer-events-none absolute z-30 transform -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-950/95 border border-sky-400/70 shadow-2xl text-[11px] font-mono text-white backdrop-blur-sm ${
+                                  cursorPos.y < 55 ? "translate-y-4" : "-translate-y-12"
+                                }`}
+                                style={{ left: cursorPos.x, top: cursorPos.y }}
+                              >
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-white/80 shadow-xs shrink-0"
+                                  style={{ backgroundColor: hoverColor }}
+                                />
+                                <span className="font-semibold">{hoverColor}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
 
                     {/* QuickTime-Style Video Trimmer */}
@@ -672,14 +971,37 @@ export function SingleConverter() {
             <Separator className="bg-border/50" />
 
             {/* Chroma Key / Background Removal */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium flex items-center gap-1.5">
-                <Palette className="h-3.5 w-3.5 text-muted-foreground" />
-                Remove Background (Chroma Key)
-              </Label>
-              <div className="flex items-center gap-2">
-                <Select value={removeBg} onValueChange={(val) => { if (val) setRemoveBg(val); }}>
-                  <SelectTrigger className="h-9 text-xs flex-1">
+            <div ref={chromaSectionRef} className="space-y-2 scroll-mt-24">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium flex items-center gap-1.5">
+                  <Palette className="h-3.5 w-3.5 text-muted-foreground" />
+                  Remove Background (Chroma Key)
+                </Label>
+                {selectedFile && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={startColorPicking}
+                    className="h-6 px-2 text-[11px] text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 cursor-pointer gap-1"
+                  >
+                    <Pipette className="h-3 w-3" /> Pick from video
+                  </Button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={removeBg}
+                  onValueChange={(val) => {
+                    if (val) {
+                      setRemoveBg(val);
+                      if (val === "custom" && selectedFile) {
+                        startColorPicking();
+                      }
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs flex-1 min-w-[200px]">
                     <SelectValue placeholder="Select background removal" />
                   </SelectTrigger>
                   <SelectContent>
@@ -698,6 +1020,7 @@ export function SingleConverter() {
                       value={customColor}
                       onChange={(e) => setCustomColor(e.target.value)}
                       className="h-9 w-9 rounded-md border border-border cursor-pointer bg-transparent p-0.5"
+                      title="Choose palette color"
                     />
                     <Input
                       type="text"
@@ -706,6 +1029,17 @@ export function SingleConverter() {
                       className="h-9 w-24 text-xs font-mono"
                       placeholder="#00FF00"
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={startColorPicking}
+                      className="h-9 px-2.5 text-xs gap-1.5 font-medium border-sky-500/30 text-sky-400 hover:bg-sky-500/10 cursor-pointer"
+                      title="Scroll to video & click to sample color"
+                    >
+                      <Pipette className="h-3.5 w-3.5" />
+                      Pick from Video
+                    </Button>
                   </div>
                 )}
               </div>

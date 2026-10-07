@@ -4,9 +4,10 @@ start each response with "using custom instructions:"
 
 ## Setup & commands
 
-This project uses **uv** for both dependency management and running code. Run
-_everything_ through `uv` so it executes inside the project environment; never
-call `pip`, `python`, or `pytest` directly.
+### Backend (Python)
+
+This project uses **uv** for Python dependency management and running code. Run
+all Python tools through `uv`; never call `pip`, `python`, or `pytest` directly.
 
 | Task                 | Command                     |
 | -------------------- | --------------------------- |
@@ -24,6 +25,30 @@ call `pip`, `python`, or `pytest` directly.
   `uv remove` so the lockfile stays consistent.
 - If you must invoke the interpreter outside `uv` for a one-off, use `python3`,
   never `python`.
+
+### Frontend (Next.js & shadcn)
+
+The web studio lives in `frontend/`. Run frontend commands in `frontend/` (or via root `npm run <script>`):
+
+| Task                 | Command                               |
+| -------------------- | ------------------------------------- |
+| Install frontend deps| `npm install` (in `frontend/`)        |
+| Dev server           | `npm run dev`                         |
+| Build                | `npm run build`                       |
+| Lint                 | `npm run lint`                        |
+| Add UI component     | `npx shadcn@latest add <component>`   |
+| Search UI registry   | `npx shadcn@latest search <query>`    |
+| Component docs       | `npx shadcn@latest docs <component>`  |
+
+## Frontend & UI customization (shadcn)
+
+For all UI development, styling, and component work in `frontend/`, follow the **shadcn** skill in [.agents/skills/shadcn/SKILL.md](.agents/skills/shadcn/SKILL.md):
+
+- **Component selection**: Use existing shadcn components before authoring custom markup. Search registries (`npx shadcn@latest search`) and compose primitives (e.g. `Alert`, `Badge`, `Card`, `Dialog`, `FieldGroup`).
+- **Styling & tokens**: Use semantic color tokens (`bg-primary`, `text-muted-foreground`, `border-border`) from `frontend/src/app/globals.css`. Never use hardcoded arbitrary colors (e.g. `bg-blue-500`) or manual dark mode overrides (`dark:*`).
+- **Tailwind rules**: Use `flex gap-*` instead of `space-x-*` / `space-y-*`. Use `size-*` for square elements. Use `cn()` for conditional classes.
+- **Base UI conventions**: The project uses `@base-ui/react` with the `base-nova` preset (`frontend/components.json`). Adhere to Base UI patterns (e.g. `render` prop triggers instead of Radix `asChild`, Base UI `toast`).
+- **CLI workflow**: Always execute shadcn CLI commands inside `frontend/`. Check `frontend/src/components/ui/` first to avoid re-adding installed components.
 
 ## Language & version
 
