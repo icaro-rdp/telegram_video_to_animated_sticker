@@ -15,7 +15,9 @@ from .exceptions import (
 )
 from .optimizer import (
     MAX_TELEGRAM_STICKER_BYTES,
+    SAFE_TARGET_BYTES,
     EncodingParams,
+    calculate_target_bitrate,
     plan_reencode_strategy,
 )
 from .validator import (
@@ -200,8 +202,16 @@ class TelegramConverter:
         pix_fmt = "yuva420p" if needs_alpha else "yuv420p"
 
         input_args = self._build_input_args(in_p, info.duration, timing.start_time)
+        target_bitrate = calculate_target_bitrate(
+            timing.clip_duration, SAFE_TARGET_BYTES
+        )
         initial_params = EncodingParams(
-            crf=cfg.crf, bitrate_kbps=0, two_pass=False, fps=min(cfg.fps, 30)
+            crf=cfg.crf,
+            bitrate_kbps=target_bitrate,
+            maxrate_kbps=int(target_bitrate * 1.15),
+            bufsize_kbps=int(target_bitrate * 2),
+            two_pass=False,
+            fps=min(cfg.fps, 30),
         )
 
         crop_box = parse_crop_box(cfg.crop, info.width, info.height)
@@ -435,14 +445,26 @@ class TelegramConverter:
         """Executes FFmpeg encoding command (single-pass or two-pass)."""
         is_complex = vfilters.startswith("[")
         filter_args = ["-filter_complex", vfilters] if is_complex else ["-vf", vfilters]
-        speed_args = [
-            "-deadline",
-            "realtime",
-            "-cpu-used",
-            "6",
-            "-row-mt",
-            "1",
-        ]
+
+        if params.two_pass:
+            speed_args = [
+                "-deadline",
+                "good",
+                "-cpu-used",
+                "4",
+                "-row-mt",
+                "1",
+            ]
+        else:
+            speed_args = [
+                "-deadline",
+                "realtime",
+                "-cpu-used",
+                "6",
+                "-row-mt",
+                "1",
+            ]
+
         base_cmd = [
             self.ffmpeg_bin,
             "-y",
@@ -458,18 +480,32 @@ class TelegramConverter:
         ]
 
         if not params.two_pass:
-            cmd = base_cmd + [
-                "-crf",
-                str(params.crf),
-                "-b:v",
-                "0",
-                "-an",
-                "-t",
-                f"{clip_dur:.4f}",
-                "-f",
-                "webm",
-                str(out_p),
-            ]
+            rate_flags: list[str] = []
+            if params.bitrate_kbps > 0:
+                rate_flags = [
+                    "-b:v",
+                    f"{params.bitrate_kbps}k",
+                    "-maxrate",
+                    f"{params.maxrate_kbps or int(params.bitrate_kbps * 1.15)}k",
+                    "-bufsize",
+                    f"{params.bufsize_kbps or int(params.bitrate_kbps * 2)}k",
+                ]
+            else:
+                rate_flags = ["-b:v", "0"]
+
+            cmd = (
+                base_cmd
+                + ["-crf", str(params.crf)]
+                + rate_flags
+                + [
+                    "-an",
+                    "-t",
+                    f"{clip_dur:.4f}",
+                    "-f",
+                    "webm",
+                    str(out_p),
+                ]
+            )
             self._execute(cmd, in_p.name, "FFmpeg encoding")
         else:
             with tempfile.TemporaryDirectory() as tmpdir:
