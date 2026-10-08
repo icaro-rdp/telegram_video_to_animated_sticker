@@ -70,11 +70,19 @@ class FFmpegExecutionError(ProcessingError):
     def __str__(self) -> str:
         base = super().__str__()
         if self.stderr:
-            # Extract last line or concise summary from stderr
             err_lines = [
                 line.strip() for line in self.stderr.splitlines() if line.strip()
             ]
-            tail = err_lines[-1] if err_lines else ""
+            if err_lines:
+                if (
+                    len(err_lines) > 1
+                    and "Error opening output files" in err_lines[-1]
+                ):
+                    tail = f"{err_lines[-2]} | {err_lines[-1]}"
+                else:
+                    tail = err_lines[-1]
+            else:
+                tail = ""
             return f"{base} (Exit code: {self.returncode}): {tail}"
         return base
 

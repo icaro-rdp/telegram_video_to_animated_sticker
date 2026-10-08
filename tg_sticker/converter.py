@@ -206,7 +206,12 @@ class TelegramConverter:
 
         crop_box = parse_crop_box(cfg.crop, info.width, info.height)
         vfilters = self._build_video_filters(
-            cfg, timing, initial_params.fps, crop_box=crop_box
+            cfg,
+            timing,
+            initial_params.fps,
+            crop_box=crop_box,
+            source_width=info.width,
+            source_height=info.height,
         )
         self._run_encode(
             in_p,
@@ -229,7 +234,12 @@ class TelegramConverter:
                 current_fps=initial_params.fps,
             )
             curr_filters = self._build_video_filters(
-                cfg, timing, reencode_params.fps, crop_box=crop_box
+                cfg,
+                timing,
+                reencode_params.fps,
+                crop_box=crop_box,
+                source_width=info.width,
+                source_height=info.height,
             )
             self._run_encode(
                 in_p,
@@ -298,6 +308,8 @@ class TelegramConverter:
         timing: TimingPlan,
         target_fps: int,
         crop_box: tuple[int, int, int, int] | None = None,
+        source_width: int | None = None,
+        source_height: int | None = None,
     ) -> str:
         filters: list[str] = []
 
@@ -317,6 +329,16 @@ class TelegramConverter:
 
         effective_fit = cfg.fit_mode or ("crop" if cfg.mode == "emoji" else "contain")
 
+        ref_w = crop_box[2] if crop_box else source_width
+        ref_h = crop_box[3] if crop_box else source_height
+
+        if ref_w is not None and ref_h is not None and ref_w > 0 and ref_h > 0:
+            scale_sticker = "scale=512:-2" if ref_w >= ref_h else "scale=-2:512"
+            scale_emoji_contain = "scale=100:-2" if ref_w >= ref_h else "scale=-2:100"
+        else:
+            scale_sticker = "scale=if(gte(iw\\,ih)\\,512\\,-2):if(gte(iw\\,ih)\\,-2\\,512)"
+            scale_emoji_contain = "scale=if(gte(iw\\,ih)\\,100\\,-2):if(gte(iw\\,ih)\\,-2\\,100)"
+
         if crop_box is not None:
             cx, cy, cw, ch = crop_box
             crop_filter = f"crop={cw}:{ch}:{cx}:{cy}"
@@ -328,21 +350,17 @@ class TelegramConverter:
                     filters.append(f"{crop_filter},scale=512:512")
                 elif effective_fit == "pad":
                     filters.append(
-                        f"{crop_filter},"
-                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)',"
+                        f"{crop_filter},{scale_sticker},"
                         "pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000"
                     )
                 else:
                     # contain or default or crop: scale to max 512px on longer edge
-                    filters.append(
-                        f"{crop_filter},"
-                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)'"
-                    )
+                    filters.append(f"{crop_filter},{scale_sticker}")
         else:
             if cfg.mode == "emoji":
                 if effective_fit in ("pad", "contain"):
                     filters.append(
-                        "scale='if(gte(iw,ih),100,-2)':'if(gte(iw,ih),-2,100)',"
+                        f"{scale_emoji_contain},"
                         "pad=100:100:(100-iw)/2:(100-ih)/2:color=0x00000000"
                     )
                 elif effective_fit == "stretch":
@@ -355,16 +373,13 @@ class TelegramConverter:
                     filters.append("crop=min(iw\\,ih):min(iw\\,ih),scale=512:512")
                 elif effective_fit == "pad":
                     filters.append(
-                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)',"
+                        f"{scale_sticker},"
                         "pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000"
                     )
                 elif effective_fit == "stretch":
                     filters.append("scale=512:512")
                 else:  # contain (default)
-                    # exactly 512px on longer side, <= 512px on other, even dimensions
-                    filters.append(
-                        "scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)'"
-                    )
+                    filters.append(scale_sticker)
 
         filters.append(f"fps={min(target_fps, 30)}")
         base_chain = ",".join(filters)
@@ -423,7 +438,6 @@ class TelegramConverter:
         base_cmd = [
             self.ffmpeg_bin,
             "-y",
-            "-autorotate",
             *(input_args or []),
             "-i",
             str(in_p),
@@ -443,6 +457,8 @@ class TelegramConverter:
                 "-an",
                 "-t",
                 f"{clip_dur:.4f}",
+                "-f",
+                "webm",
                 str(out_p),
             ]
             self._execute(cmd, in_p.name, "FFmpeg encoding")
@@ -493,6 +509,8 @@ class TelegramConverter:
                         "-an",
                         "-t",
                         f"{clip_dur:.4f}",
+                        "-f",
+                        "webm",
                         str(out_p),
                     ]
                 )
