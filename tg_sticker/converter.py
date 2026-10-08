@@ -435,6 +435,14 @@ class TelegramConverter:
         """Executes FFmpeg encoding command (single-pass or two-pass)."""
         is_complex = vfilters.startswith("[")
         filter_args = ["-filter_complex", vfilters] if is_complex else ["-vf", vfilters]
+        speed_args = [
+            "-deadline",
+            "realtime",
+            "-cpu-used",
+            "6",
+            "-row-mt",
+            "1",
+        ]
         base_cmd = [
             self.ffmpeg_bin,
             "-y",
@@ -446,6 +454,7 @@ class TelegramConverter:
             "libvpx-vp9",
             "-pix_fmt",
             pix_fmt,
+            *speed_args,
         ]
 
         if not params.two_pass:
