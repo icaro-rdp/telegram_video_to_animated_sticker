@@ -371,13 +371,11 @@ class TelegramConverter:
 
         if cfg.loop_mode == "pingpong":
             return (
-                f"[0:v]{base_chain},trim=0:{timing.half_duration:.4f},setpts=PTS-STARTPTS,split[fwd][rev_in];"
+                f"{base_chain},trim=0:{timing.half_duration:.4f},setpts=PTS-STARTPTS,split[fwd][rev_in];"
                 f"[rev_in]reverse[rev];"
                 f"[fwd][rev]concat=n=2:v=1:a=0"
             )
-        return (
-            f"[0:v]{base_chain},trim=0:{timing.clip_duration:.4f},setpts=PTS-STARTPTS"
-        )
+        return f"{base_chain},trim=0:{timing.clip_duration:.4f},setpts=PTS-STARTPTS"
 
     def _execute(
         self, cmd: list[str], file_name: str, stage_name: str
@@ -420,7 +418,7 @@ class TelegramConverter:
         input_args: list[str] | None = None,
     ) -> None:
         """Executes FFmpeg encoding command (single-pass or two-pass)."""
-        is_complex = ";" in vfilters or vfilters.startswith("[")
+        is_complex = vfilters.startswith("[")
         filter_args = ["-filter_complex", vfilters] if is_complex else ["-vf", vfilters]
         base_cmd = [
             self.ffmpeg_bin,
